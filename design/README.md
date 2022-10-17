@@ -15,7 +15,7 @@
 ```mermaid
   classDiagram
     class Trader
-      Trader : NewTrader(Params) *Trader
+      Trader : "NewTrader(Params) *Trader"
       Trader : Run(*chan bool)
 
     class DataFeed
