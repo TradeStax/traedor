@@ -30,5 +30,5 @@
     class Strategy
       Strategy : NewStrategy(Params) Strategy
       Strategy : AddData(*Data) error
-      Strategy : GetIndicatorFeed() *chan Indicator
+      Strategy : GetIndicatorFeed() chan Indicator
 ```
