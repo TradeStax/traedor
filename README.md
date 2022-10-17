@@ -1,0 +1,2 @@
+# traedor
+Algorithmic Trader
