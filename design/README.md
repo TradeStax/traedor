@@ -11,3 +11,24 @@
     A --Send Trade--> C;
     A --Get Indicator--> D;
 ```
+
+```mermaid
+  classDiagram
+    class Trader
+      Trader : NewTrader(Params) *Trader
+      Trader : Run(*chan bool)
+
+    class DataFeed
+      DataFeed : NewDataFeed(Params) *DataFeed
+      DataFeed : GetDataFeed() *chan *Data
+
+    class Broker
+      Broker : NewBroker(Params) *Broker
+      Broker : GetAccountStats() *Account
+      Broker : SendTrade(Trade) Result
+
+    class Strategy
+      Strategy : NewStrategy(Params) *Strategy
+      Strategy : AddData(*Data) error
+      Strategy : GetIndicatorFeed() *chan Indicator
+```
