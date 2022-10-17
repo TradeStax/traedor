@@ -4,8 +4,10 @@
 
 ```mermaid
   graph TD;
-      A-->B;
-      A-->C;
-      B-->D;
-      C-->D;
+    A[Trader];
+    B[(DataFeed)] --Send Data--> A;
+    C[Broker];
+    D[Strategy];
+    A --Send Trade--> C;
+    A --Get Indicator--> D;
 ```
