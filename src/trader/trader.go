@@ -12,6 +12,11 @@ type Trader struct {
 	broker   broker.IBroker
 	data     datafeed.IDatafeed
 	strategy strategy.IStrategy
+	config Config
+}
+
+type Config struct {
+	symbol string
 }
 
 func NewTrader() *Trader {
@@ -22,6 +27,9 @@ func NewTrader() *Trader {
 			Interval: "1ms",
 		}),
 		strategy: strategy.NewStrategy(),
+		config: Config{
+			symbol: "sin",
+		},
 	}
 }
 
@@ -37,15 +45,22 @@ func (t *Trader) Run() {
 		case newData := <-dataChan:
 			t.strategy.AddData(newData)
 		case newInd := <-indChan:
+			trade := broker.Trade{
+				Symbol: t.config.symbol,
+			}
 			switch newInd.Direction {
 			case strategy.Close:
-				fmt.Println("Close Trade")
+				trade.Operation = broker.Close
 			case strategy.Buy:
-				fmt.Println("Create Buy")
+				trade.Operation = broker.Buy
 			case strategy.Sell:
-				fmt.Println("Create Sell")
+				trade.Operation = broker.Sell
 			default:
-				fmt.Println("No indicator")
+				trade.Operation = broker.None
+			}
+			err := t.broker.SendTrade(trade)
+			if err != nil {
+				fmt.Println("Error on broker send")
 			}
 		}
 	}

@@ -51,11 +51,11 @@ func (d *Datafeed) GetErrorChan() chan error {
 func (d *Datafeed) onesData(duration time.Duration) {
 	for i := 0; i < testDataMax; i++ {
 		d.dataChan <- Data{
-			high:   1.0,
-			low:    1.0,
-			open:   1.0,
-			close:  1.0,
-			volume: 1,
+			High:   1.0,
+			Low:    1.0,
+			Open:   1.0,
+			Close:  1.0,
+			Volume: 1,
 		}
 		time.Sleep(duration)
 	}
@@ -66,11 +66,11 @@ func (d *Datafeed) sinData(duration time.Duration) {
 	for i := 0; i < testDataMax; i++ {
 		v := math.Sin(float64(i)/float64(testDataMax/16)) + 1
 		d.dataChan <- Data{
-			high:   v,
-			low:    v,
-			open:   v,
-			close:  v,
-			volume: 1,
+			High:   v,
+			Low:    v,
+			Open:   v,
+			Close:  v,
+			Volume: 1,
 		}
 		time.Sleep(duration)
 	}

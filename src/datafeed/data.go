@@ -1,9 +1,9 @@
 package datafeed
 
 type Data struct {
-	high   float64
-	low    float64
-	open   float64
-	close  float64
-	volume int
+	High   float64
+	Low    float64
+	Open   float64
+	Close  float64
+	Volume int
 }
