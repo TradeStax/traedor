@@ -18,8 +18,8 @@ func NewTrader() *Trader {
 	return &Trader{
 		broker: broker.NewBroker(),
 		data: datafeed.NewDatafeed(datafeed.Config{
-			Symbol:   "SPY",
-			Interval: "5M",
+			Symbol:   "sin",
+			Interval: "1ms",
 		}),
 		strategy: strategy.NewStrategy(),
 	}
@@ -27,9 +27,13 @@ func NewTrader() *Trader {
 
 func (t *Trader) Run() {
 	dataChan := t.data.GetDatafeed()
+	dErrorChan := t.data.GetErrorChan()
 	indChan := t.strategy.GetIndicatorFeed()
 	for {
 		select {
+		case err := <-dErrorChan:
+			fmt.Println(err.Error())
+			return
 		case newData := <-dataChan:
 			t.strategy.AddData(newData)
 		case newInd := <-indChan:
