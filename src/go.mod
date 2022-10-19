@@ -1,3 +1,3 @@
-module github.com/TradeStax/traedor
+module github.com/tradestax/traedor
 
 go 1.18

@@ -5,7 +5,8 @@ type Indicator struct {
 }
 
 const (
-	None = 0
-	Buy  = 1
-	Sell = 2
+	None  = 0
+	Close = 1
+	Buy   = 2
+	Sell  = 3
 )

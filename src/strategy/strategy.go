@@ -1,6 +1,6 @@
 package strategy
 
-import "github.com/TradeStax/traedor/datafeed"
+import "github.com/tradestax/traedor/datafeed"
 
 type Strategy struct {
 	indicatorChan chan Indicator
@@ -13,7 +13,9 @@ func NewStrategy() *Strategy {
 }
 
 func (s *Strategy) AddData(datafeed.Data) error {
-	s.indicatorChan <- Indicator{Direction: None}
+	go func() {
+		s.indicatorChan <- Indicator{Direction: None}
+	}()
 	return nil
 }
 

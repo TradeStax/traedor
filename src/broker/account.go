@@ -1,6 +1,6 @@
 package broker
 
 type Account struct {
-	balance          float
-	availableBalance float
+	balance          float64
+	availableBalance float64
 }
