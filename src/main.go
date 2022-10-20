@@ -1,9 +1,30 @@
 package main
 
-import "github.com/tradestax/traedor/trader"
+import (
+	"github.com/tradestax/traedor/config"
+	"github.com/tradestax/traedor/trader"
+)
+
+/*
+	Some current options
+	Datafeed: "Generated" or "CSV"
+		When using Generated
+			* Symbol can be "ones" or "sin"
+			* Interval determines sleep in between values
+		When using CSV
+			* DataPath must be specified, file to use
+			* Interval determines sleep in between values
+*/
 
 func main() {
-	trader := trader.NewTrader()
+	traderConfig := config.Config{
+		Datafeed:        "CSV",
+		DataPath:        "./data/SPY_5min_sample.csv",
+		Interval:        "1ms",
+		StartingBalance: 100.0,
+		Symbol:          "sin",
+	}
+	trader := trader.NewTrader(traderConfig)
 	trader.Run()
 	trader.Summary()
 }

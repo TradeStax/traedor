@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/tradestax/traedor/broker"
+	"github.com/tradestax/traedor/config"
 	"github.com/tradestax/traedor/datafeed"
 	"github.com/tradestax/traedor/strategy"
 )
@@ -12,26 +13,15 @@ type Trader struct {
 	broker   broker.IBroker
 	data     datafeed.IDatafeed
 	strategy strategy.IStrategy
-	config   Config
+	config   config.Config
 }
 
-type Config struct {
-	symbol          string
-	startingBalance float64
-}
-
-func NewTrader() *Trader {
+func NewTrader(c config.Config) *Trader {
 	return &Trader{
-		broker: broker.NewBroker(),
-		data: datafeed.NewDatafeed(datafeed.Config{
-			Symbol:   "sin",
-			Interval: "1ms",
-		}),
+		broker:   broker.NewBroker(),
+		data:     datafeed.NewDatafeed(c),
 		strategy: strategy.NewStrategy(),
-		config: Config{
-			symbol:          "sin",
-			startingBalance: 100.0,
-		},
+		config:   c,
 	}
 }
 
@@ -48,7 +38,7 @@ func (t *Trader) Run() {
 			t.strategy.AddData(newData)
 		case newInd := <-indChan:
 			trade := broker.Trade{
-				Symbol: t.config.symbol,
+				Symbol: t.config.Symbol,
 			}
 			switch newInd.Direction {
 			case strategy.Close:
@@ -74,7 +64,7 @@ func (t *Trader) Run() {
 func (t *Trader) Summary() {
 	account, _ := t.broker.GetAccountStats()
 	finalBalance := account.Balance()
-	percentChange := (finalBalance - t.config.startingBalance) / t.config.startingBalance
+	percentChange := (finalBalance - t.config.StartingBalance) / t.config.StartingBalance
 	fmt.Printf("Final Balance: %.2f\n", finalBalance)
 	fmt.Printf("Percent Change: %.2f%%\n", percentChange*100)
 }
