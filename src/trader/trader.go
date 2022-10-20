@@ -12,11 +12,12 @@ type Trader struct {
 	broker   broker.IBroker
 	data     datafeed.IDatafeed
 	strategy strategy.IStrategy
-	config Config
+	config   Config
 }
 
 type Config struct {
-	symbol string
+	symbol          string
+	startingBalance float64
 }
 
 func NewTrader() *Trader {
@@ -28,7 +29,8 @@ func NewTrader() *Trader {
 		}),
 		strategy: strategy.NewStrategy(),
 		config: Config{
-			symbol: "sin",
+			symbol:          "sin",
+			startingBalance: 100.0,
 		},
 	}
 }
@@ -51,10 +53,13 @@ func (t *Trader) Run() {
 			switch newInd.Direction {
 			case strategy.Close:
 				trade.Operation = broker.Close
+				trade.Price = newInd.Price
 			case strategy.Buy:
 				trade.Operation = broker.Buy
+				trade.Price = newInd.Price
 			case strategy.Sell:
 				trade.Operation = broker.Sell
+				trade.Price = newInd.Price
 			default:
 				trade.Operation = broker.None
 			}
@@ -64,4 +69,12 @@ func (t *Trader) Run() {
 			}
 		}
 	}
+}
+
+func (t *Trader) Summary() {
+	account, _ := t.broker.GetAccountStats()
+	finalBalance := account.Balance()
+	percentChange := (finalBalance - t.config.startingBalance) / t.config.startingBalance
+	fmt.Printf("Final Balance: %.2f\n", finalBalance)
+	fmt.Printf("Percent Change: %.2f%%\n", percentChange*100)
 }

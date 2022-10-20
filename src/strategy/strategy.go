@@ -37,10 +37,13 @@ func (s *Strategy) determineIndicator() {
 	diff := s.dataCache[9].Close - sma(s.dataCache)
 	if diff > -0.1 && diff < 0.1 {
 		ind.Direction = Close
+		ind.Price = s.dataCache[9].Close
 	} else if diff >= 0.1 {
 		ind.Direction = Buy
+		ind.Price = s.dataCache[9].Close
 	} else {
 		ind.Direction = Sell
+		ind.Price = s.dataCache[9].Close
 	}
 	s.indicatorChan <- ind
 }
