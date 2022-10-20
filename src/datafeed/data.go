@@ -5,5 +5,5 @@ type Data struct {
 	Low    float64
 	Open   float64
 	Close  float64
-	Volume int
+	Volume float64
 }
