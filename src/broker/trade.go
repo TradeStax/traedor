@@ -3,6 +3,7 @@ package broker
 type Trade struct {
 	Symbol    string
 	Operation int
+	Price     float64
 }
 
 const (
