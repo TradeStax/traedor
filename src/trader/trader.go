@@ -3,6 +3,7 @@ package trader
 import (
 	"fmt"
 
+	"github.com/tradestax/traedor/auth"
 	"github.com/tradestax/traedor/broker"
 	"github.com/tradestax/traedor/config"
 	"github.com/tradestax/traedor/datafeed"
@@ -10,18 +11,20 @@ import (
 )
 
 type Trader struct {
-	broker   broker.IBroker
-	data     datafeed.IDatafeed
-	strategy strategy.IStrategy
-	config   config.Config
+	authHelper auth.IAuthHelper
+	broker     broker.IBroker
+	data       datafeed.IDatafeed
+	strategy   strategy.IStrategy
+	config     config.Config
 }
 
 func NewTrader(c config.Config) *Trader {
 	return &Trader{
-		broker:   broker.NewBroker(),
-		data:     datafeed.NewDatafeed(c),
-		strategy: strategy.NewStrategy(),
-		config:   c,
+		authHelper: auth.NewAuthHelper(c),
+		broker:     broker.NewBroker(),
+		data:       datafeed.NewDatafeed(c),
+		strategy:   strategy.NewStrategy(),
+		config:     c,
 	}
 }
 

@@ -18,6 +18,7 @@ import (
 
 func main() {
 	traderConfig := config.Config{
+		AuthHelper:      "TDA",
 		Datafeed:        "CSV",
 		DataPath:        "./data/SPY_5min_sample.csv",
 		Interval:        "1ms",
