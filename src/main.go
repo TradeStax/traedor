@@ -18,8 +18,12 @@ import (
 
 func main() {
 	traderConfig := config.Config{
-		AuthHelper:      "TDA",
-		Datafeed:        "CSV",
+		AuthConfig: config.AuthConfig{
+			AuthHelper:  "TDA",
+			UserEnvVar:  "TDAMERITRADE_CLIENT_ID",
+			CallbackURL: "https://127.0.0.1/callback",
+		},
+		Datafeed:        "TDA",
 		DataPath:        "./data/SPY_5min_sample.csv",
 		Interval:        "1ms",
 		StartingBalance: 100.0,

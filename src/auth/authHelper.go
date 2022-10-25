@@ -8,7 +8,7 @@ import (
 
 func NewAuthHelper(c config.Config) IAuthHelper {
 	var a IAuthHelper
-	switch c.AuthHelper {
+	switch c.AuthConfig.AuthHelper {
 	case "TDA":
 		a = NewTDAAuthHelper(c)
 	default:

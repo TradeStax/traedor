@@ -19,16 +19,20 @@ type Trader struct {
 }
 
 func NewTrader(c config.Config) *Trader {
+	ah := auth.NewAuthHelper(c)
 	return &Trader{
-		authHelper: auth.NewAuthHelper(c),
+		authHelper: ah,
 		broker:     broker.NewBroker(),
-		data:       datafeed.NewDatafeed(c),
+		data:       datafeed.NewDatafeed(c, ah),
 		strategy:   strategy.NewStrategy(),
 		config:     c,
 	}
 }
 
 func (t *Trader) Run() {
+	if err := t.authHelper.Authenticate(); err != nil {
+		panic(err)
+	}
 	dataChan := t.data.GetDatafeed()
 	dErrorChan := t.data.GetErrorChan()
 	indChan := t.strategy.GetIndicatorFeed()
