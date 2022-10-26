@@ -6,7 +6,7 @@ import (
 	"github.com/tradestax/traedor/config"
 )
 
-func NewAuthHelper(c config.Config) IAuthHelper {
+func NewAuthHelper(c *config.Config) IAuthHelper {
 	var a IAuthHelper
 	switch c.AuthConfig.AuthHelper {
 	case "TDA":

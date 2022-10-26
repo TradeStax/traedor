@@ -15,10 +15,10 @@ type Trader struct {
 	broker     broker.IBroker
 	data       datafeed.IDatafeed
 	strategy   strategy.IStrategy
-	config     config.Config
+	config     *config.Config
 }
 
-func NewTrader(c config.Config) *Trader {
+func NewTrader(c *config.Config) *Trader {
 	ah := auth.NewAuthHelper(c)
 	return &Trader{
 		authHelper: ah,

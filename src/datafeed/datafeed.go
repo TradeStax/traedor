@@ -7,7 +7,7 @@ import (
 	"github.com/tradestax/traedor/config"
 )
 
-func NewDatafeed(c config.Config, ah auth.IAuthHelper) IDatafeed {
+func NewDatafeed(c *config.Config, ah auth.IAuthHelper) IDatafeed {
 	var df IDatafeed
 	switch c.Datafeed {
 	case "Generated":

@@ -9,14 +9,14 @@ import (
 )
 
 type Datafeed struct {
-	config    config.Config
+	config    *config.Config
 	dataChan  chan Data
 	errorChan chan error
 }
 
 const testDataMax = 100
 
-func NewGeneratedDatafeed(c config.Config) *Datafeed {
+func NewGeneratedDatafeed(c *config.Config) *Datafeed {
 	duration, err := time.ParseDuration(c.Interval)
 	if err != nil {
 		panic(err)

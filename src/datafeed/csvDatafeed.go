@@ -19,7 +19,7 @@ const (
 	volIndex   = 5
 )
 
-func NewCSVDatafeed(c config.Config) *Datafeed {
+func NewCSVDatafeed(c *config.Config) *Datafeed {
 	duration, err := time.ParseDuration(c.Interval)
 	if err != nil {
 		panic(err)

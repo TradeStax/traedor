@@ -29,7 +29,7 @@ const (
 	serverAddress = ":8081"
 )
 
-func NewTDAAuthHelper(c config.Config) *TDAAuthHelper {
+func NewTDAAuthHelper(c *config.Config) *TDAAuthHelper {
 	clientID := os.Getenv(c.AuthConfig.UserEnvVar)
 	if clientID == "" {
 		panic(fmt.Errorf("Unauthorized: No client ID present"))

@@ -12,7 +12,7 @@ import (
 
 type TDADatafeed struct {
 	authHelper *auth.TDAAuthHelper
-	config     config.Config
+	config     *config.Config
 	dataChan   chan Data
 	errorChan  chan error
 }
@@ -61,7 +61,7 @@ type TdaResponseContentMsg struct {
 	Message string `json:"msg"`
 }
 
-func NewTDADatafeed(c config.Config, ah auth.IAuthHelper) *TDADatafeed {
+func NewTDADatafeed(c *config.Config, ah auth.IAuthHelper) *TDADatafeed {
 	authHelper, ok := ah.(*auth.TDAAuthHelper)
 	if !ok {
 		panic(fmt.Errorf("Failed to convert IAuthHelper to TDAAuthHelper"))
