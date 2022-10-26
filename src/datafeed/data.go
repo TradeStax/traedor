@@ -6,4 +6,5 @@ type Data struct {
 	Open   float64
 	Close  float64
 	Volume float64
+	Symbol string
 }
