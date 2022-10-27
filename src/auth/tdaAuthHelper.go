@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -32,7 +31,7 @@ const (
 func NewTDAAuthHelper(c *config.Config) *TDAAuthHelper {
 	clientID := os.Getenv(c.AuthConfig.UserEnvVar)
 	if clientID == "" {
-		panic(fmt.Errorf("Unauthorized: No client ID present"))
+		log.Fatalf("Unauthorized: No client ID present")
 	}
 	return &TDAAuthHelper{
 		authChan: make(chan error, 1),
@@ -60,10 +59,10 @@ func (a *TDAAuthHelper) Authenticate() error {
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
-		fmt.Printf("Listening on %v\n", serverAddress)
-		fmt.Printf("Please visit %v/authenticate to authorize application\n", serverAddress)
+		log.Printf("Listening on %v\n", serverAddress)
+		log.Printf("Please visit %v/authenticate to authorize application\n", serverAddress)
 		a.authChan <- srv.ListenAndServe()
-		fmt.Println("Auth complete http server shutting down...")
+		log.Println("Auth complete http server shutting down...")
 		wg.Done()
 	}()
 	err := <-a.authChan
@@ -93,6 +92,7 @@ func (h *TDAAuthHelper) AuthenticateHandler(w http.ResponseWriter, req *http.Req
 	if err != nil {
 		w.Write([]byte(err.Error()))
 		w.WriteHeader(http.StatusInternalServerError)
+		log.Println("TDAAuthHelper.AuthenticateHandler: StartOAuth2Flow failed. Error: %v\n", err.Error())
 		return
 	}
 
@@ -105,6 +105,7 @@ func (h *TDAAuthHelper) CallbackHandler(w http.ResponseWriter, req *http.Request
 	if err != nil {
 		w.Write([]byte(err.Error()))
 		w.WriteHeader(http.StatusInternalServerError)
+		log.Println("TDAAuthHelper.CallbackHandler: FinishOAuth2Flow failed. Error: %v\n", err.Error())
 		return
 	}
 
