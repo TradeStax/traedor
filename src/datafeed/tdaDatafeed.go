@@ -2,7 +2,6 @@ package datafeed
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 
 	"github.com/tradestax/go-tdameritrade"
@@ -64,7 +63,7 @@ type TdaResponseContentMsg struct {
 func NewTDADatafeed(c config.Config, ah auth.IAuthHelper) *TDADatafeed {
 	authHelper, ok := ah.(*auth.TDAAuthHelper)
 	if !ok {
-		panic(fmt.Errorf("Failed to convert IAuthHelper to TDAAuthHelper"))
+		log.Fatalln("Failed to convert IAuthHelper to TDAAuthHelper")
 	}
 	df := &TDADatafeed{
 		authHelper: authHelper,
@@ -78,7 +77,7 @@ func NewTDADatafeed(c config.Config, ah auth.IAuthHelper) *TDADatafeed {
 func (d *TDADatafeed) GetDatafeed() chan Data {
 	go d.tdaDatafeed()
 	if err := d.subscribe(); err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	return d.dataChan
 }
