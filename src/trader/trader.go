@@ -13,17 +13,27 @@ import (
 type Trader struct {
 	authHelper auth.IAuthHelper
 	broker     broker.IBroker
-	data       datafeed.IDatafeed
+	data       []datafeed.IDatafeed
+	dataChan   chan datafeed.Data
+	errorChan  chan error
 	strategy   strategy.IStrategy
 	config     *config.Config
 }
 
 func NewTrader(c *config.Config) *Trader {
 	ah := auth.NewAuthHelper(c)
+	dc := make(chan datafeed.Data, 10)
+	ec := make(chan error)
+	dfs := make([]datafeed.IDatafeed, len(c.Datafeeds))
+	for i, _ := range c.Datafeeds {
+		dfs[i] = datafeed.NewDatafeed(&c.Datafeeds[i], ah, dc, ec)
+	}
 	return &Trader{
 		authHelper: ah,
 		broker:     broker.NewBroker(),
-		data:       datafeed.NewDatafeed(c, ah),
+		data:       dfs,
+		dataChan:   dc,
+		errorChan:  ec,
 		strategy:   strategy.NewStrategy(),
 		config:     c,
 	}
@@ -33,19 +43,20 @@ func (t *Trader) Run() {
 	if err := t.authHelper.Authenticate(); err != nil {
 		panic(err)
 	}
-	dataChan := t.data.GetDatafeed()
-	dErrorChan := t.data.GetErrorChan()
 	indChan := t.strategy.GetIndicatorFeed()
+	for _, df := range t.data {
+		df.Start()
+	}
 	for {
 		select {
-		case err := <-dErrorChan:
+		case err := <-t.errorChan:
 			fmt.Println(err.Error())
 			return
-		case newData := <-dataChan:
+		case newData := <-t.dataChan:
 			t.strategy.AddData(newData)
 		case newInd := <-indChan:
 			trade := broker.Trade{
-				Symbol: t.config.Symbol,
+				Symbol: t.config.Broker.Symbol,
 			}
 			switch newInd.Direction {
 			case strategy.Close:
@@ -71,7 +82,7 @@ func (t *Trader) Run() {
 func (t *Trader) Summary() {
 	account, _ := t.broker.GetAccountStats()
 	finalBalance := account.Balance()
-	percentChange := (finalBalance - t.config.StartingBalance) / t.config.StartingBalance
+	percentChange := (finalBalance - t.config.Broker.StartingBalance) / t.config.Broker.StartingBalance
 	fmt.Printf("Final Balance: %.2f\n", finalBalance)
 	fmt.Printf("Percent Change: %.2f%%\n", percentChange*100)
 }

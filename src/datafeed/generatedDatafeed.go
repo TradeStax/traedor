@@ -9,32 +9,29 @@ import (
 )
 
 type Datafeed struct {
-	config    *config.Config
+	config    *config.DatafeedConfig
 	dataChan  chan Data
 	errorChan chan error
 }
 
 const testDataMax = 100
 
-func NewGeneratedDatafeed(c *config.Config) *Datafeed {
-	duration, err := time.ParseDuration(c.Interval)
-	if err != nil {
-		panic(err)
-	}
-	df := &Datafeed{
-		config:    c,
-		dataChan:  make(chan Data),
-		errorChan: make(chan error),
-	}
-	switch c.Symbol {
-	case "ones":
-		go df.onesData(duration)
-	case "sin":
-		go df.sinData(duration)
+func (d *Datafeed) Start() {
+	switch d.config.Type {
+	case "Generated":
+		switch d.config.Symbol {
+		case "ones":
+			go df.onesData(duration)
+		case "sin":
+			go df.sinData(duration)
+		default:
+			panic(fmt.Errorf("Unrecognized symbol provided"))
+		}
+	case "CSV":
+		go df.csvDatafeed(duration)
 	default:
-		panic(fmt.Errorf("Unrecognized symbol provided"))
+		panic(fmt.Errorf("Invalid datafeed specified"))
 	}
-	return df
 }
 
 func (d *Datafeed) GetDatafeed() chan Data {

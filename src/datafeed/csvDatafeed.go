@@ -6,8 +6,6 @@ import (
 	"os"
 	"strconv"
 	"time"
-
-	"github.com/tradestax/traedor/config"
 )
 
 const (
@@ -18,20 +16,6 @@ const (
 	closeIndex = 4
 	volIndex   = 5
 )
-
-func NewCSVDatafeed(c *config.Config) *Datafeed {
-	duration, err := time.ParseDuration(c.Interval)
-	if err != nil {
-		panic(err)
-	}
-	df := &Datafeed{
-		config:    c,
-		dataChan:  make(chan Data),
-		errorChan: make(chan error),
-	}
-	go df.csvDatafeed(duration)
-	return df
-}
 
 func (d *Datafeed) csvDatafeed(duration time.Duration) {
 	f, err := os.Open(d.config.DataPath)

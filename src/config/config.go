@@ -11,12 +11,9 @@ const (
 )
 
 type Config struct {
-	AuthConfig      AuthConfig
-	Datafeed        string
-	DataPath        string
-	Interval        string
-	Symbol          string
-	StartingBalance float64
+	AuthConfig AuthConfig
+	Broker     BrokerConfig
+	Datafeeds  []DatafeedConfig
 }
 
 type AuthConfig struct {
@@ -25,8 +22,22 @@ type AuthConfig struct {
 	CallbackURL string
 }
 
+type BrokerConfig struct {
+	StartingBalance float64
+	Symbol          string
+}
+
+type DatafeedConfig struct {
+	DataPath string
+	Fields   string
+	Interval string
+	Service  string
+	Symbol   string
+	Type     string
+}
+
 func setDefaults(v *viper.Viper) {
-	v.SetDefault("StartingBalance", 100.0)
+	v.SetDefault("Broker.StartingBalance", 100.0)
 }
 
 func readConfig(v *viper.Viper) {
