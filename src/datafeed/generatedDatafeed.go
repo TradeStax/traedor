@@ -12,6 +12,7 @@ type Datafeed struct {
 	config    *config.DatafeedConfig
 	dataChan  chan Data
 	errorChan chan error
+	duration time.Duration
 }
 
 const testDataMax = 100
@@ -21,14 +22,14 @@ func (d *Datafeed) Start() {
 	case "Generated":
 		switch d.config.Symbol {
 		case "ones":
-			go df.onesData(duration)
+			go d.onesData(d.duration)
 		case "sin":
-			go df.sinData(duration)
+			go d.sinData(d.duration)
 		default:
 			panic(fmt.Errorf("Unrecognized symbol provided"))
 		}
 	case "CSV":
-		go df.csvDatafeed(duration)
+		go d.csvDatafeed(d.duration)
 	default:
 		panic(fmt.Errorf("Invalid datafeed specified"))
 	}

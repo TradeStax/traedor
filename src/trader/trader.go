@@ -2,6 +2,7 @@ package trader
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/tradestax/traedor/auth"
 	"github.com/tradestax/traedor/broker"
@@ -30,7 +31,7 @@ func NewTrader(c *config.Config) *Trader {
 	}
 	return &Trader{
 		authHelper: ah,
-		broker:     broker.NewBroker(),
+		broker:     broker.NewBroker(&c.Broker),
 		data:       dfs,
 		dataChan:   dc,
 		errorChan:  ec,
@@ -73,7 +74,7 @@ func (t *Trader) Run() {
 			}
 			err := t.broker.SendTrade(trade)
 			if err != nil {
-				fmt.Println("Error on broker send")
+				log.Println(err)
 			}
 		}
 	}
