@@ -1,7 +1,7 @@
 package auth
 
 import (
-	"fmt"
+	"log"
 
 	"github.com/tradestax/traedor/config"
 )
@@ -12,7 +12,7 @@ func NewAuthHelper(c *config.Config) IAuthHelper {
 	case "TDA":
 		a = NewTDAAuthHelper(c)
 	default:
-		fmt.Println("No auth helper specified, returning default auth helper")
+		log.Println("No auth helper specified, returning default auth helper")
 		a = &AuthHelper{}
 	}
 	return a
