@@ -1,0 +1,26 @@
+AuthConfig:
+  AuthHelper: "TDA"
+  UserEnvVar: "TDAMERITRADE_CLIENT_ID"
+  CallbackURL: "https://127.0.0.1/callback"
+
+Datafeeds:
+  - Type: "TDA"
+    Service: "CHART_EQUITY"
+    Symbol: "SPY"
+    Fields: "0,1,2,3,4,5,6"
+    Interval: "1m"
+  - Type: "TDA"
+    Service: "QUOTE"
+    Fields: "0,1,2,3,4,5,8"
+    Symbol: "SPY"
+  # - Type: "CSV"
+  #   Symbol: "SPY"
+  #   DataPath: "./data/SPY_5min_sample.csv"
+  #   Interval: "1ms"
+  # - Type: "Generated"
+  #   Symbol: "sin"
+  #   Interval: "1ms"
+
+Broker:
+  StartingBalance: 100.0
+  Symbol: "SPY"

@@ -11,7 +11,7 @@ import (
 
 type TDADatafeed struct {
 	authHelper *auth.TDAAuthHelper
-	config     config.Config
+	config     *config.DatafeedConfig
 	dataChan   chan Data
 	errorChan  chan error
 }
@@ -60,7 +60,7 @@ type TdaResponseContentMsg struct {
 	Message string `json:"msg"`
 }
 
-func NewTDADatafeed(c config.Config, ah auth.IAuthHelper) *TDADatafeed {
+func NewTDADatafeed(c *config.DatafeedConfig, ah auth.IAuthHelper, dc chan Data, ec chan error) *TDADatafeed {
 	authHelper, ok := ah.(*auth.TDAAuthHelper)
 	if !ok {
 		log.Fatalln("Failed to convert IAuthHelper to TDAAuthHelper")
@@ -68,18 +68,21 @@ func NewTDADatafeed(c config.Config, ah auth.IAuthHelper) *TDADatafeed {
 	df := &TDADatafeed{
 		authHelper: authHelper,
 		config:     c,
-		dataChan:   make(chan Data),
-		errorChan:  make(chan error),
+		dataChan:   dc,
+		errorChan:  ec,
 	}
 	return df
 }
 
 func (d *TDADatafeed) GetDatafeed() chan Data {
+	return d.dataChan
+}
+
+func (d *TDADatafeed) Start() {
 	go d.tdaDatafeed()
 	if err := d.subscribe(); err != nil {
 		log.Fatal(err)
 	}
-	return d.dataChan
 }
 
 func (d *TDADatafeed) GetErrorChan() chan error {
@@ -89,33 +92,18 @@ func (d *TDADatafeed) GetErrorChan() chan error {
 // TODO:
 // Parse response and determine error case
 func (d *TDADatafeed) subscribe() error {
+	log.Printf("Subscribing to %v for %v\n", d.config.Service, d.config.Symbol)
 	d.authHelper.StreamingClient.SendCommand(tdameritrade.Command{
 		Requests: []tdameritrade.StreamRequest{
 			{
-				Service:   "CHART_EQUITY",
+				Service:   d.config.Service,
 				Requestid: "2",
 				Command:   "SUBS",
 				Account:   d.authHelper.UPN.Accounts[0].AccountID,
 				Source:    d.authHelper.UPN.StreamerInfo.AppID,
 				Parameters: tdameritrade.StreamParams{
-					Keys:   "SPY,$SPX.X",
-					Fields: "0,1,2,3,4,5,6",
-				},
-			},
-		},
-	})
-
-	d.authHelper.StreamingClient.SendCommand(tdameritrade.Command{
-		Requests: []tdameritrade.StreamRequest{
-			{
-				Service:   "QUOTE",
-				Requestid: "3",
-				Command:   "SUBS",
-				Account:   d.authHelper.UPN.Accounts[0].AccountID,
-				Source:    d.authHelper.UPN.StreamerInfo.AppID,
-				Parameters: tdameritrade.StreamParams{
-					Keys:   "SPY",
-					Fields: "0,1,2,3,4,5,8",
+					Keys:   d.config.Symbol,
+					Fields: d.config.Fields,
 				},
 			},
 		},
@@ -144,6 +132,7 @@ func (d *TDADatafeed) tdaDatafeed() {
 					switch dataMsg.Service {
 					case "QUOTE":
 						// ignore for now
+						log.Println("QUOTE RECEIVED")
 						continue
 					case "CHART_EQUITY":
 						// send to data channel

@@ -15,4 +15,8 @@
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
+# Ignore vim swap files just to be safe
 *.swp
+
+# Config file
+**/config.yaml
