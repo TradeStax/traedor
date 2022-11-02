@@ -14,6 +14,7 @@ type Config struct {
 	AuthConfig AuthConfig
 	Broker     BrokerConfig
 	Datafeeds  []DatafeedConfig
+	Strategy   []StrategyConfig
 }
 
 type AuthConfig struct {
@@ -34,6 +35,11 @@ type DatafeedConfig struct {
 	Service  string
 	Symbol   string
 	Type     string
+}
+
+type StrategyConfig struct {
+	Type   string
+	Symbol string
 }
 
 func setDefaults(v *viper.Viper) {

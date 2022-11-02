@@ -1,57 +1,22 @@
 package strategy
 
-import "github.com/tradestax/traedor/datafeed"
+import (
+	"fmt"
 
-type Strategy struct {
-	dataCache     []datafeed.Data
-	indicatorChan chan Indicator
-}
+	"github.com/tradestax/traedor/config"
+)
 
-func NewStrategy() *Strategy {
-	return &Strategy{
-		dataCache:     make([]datafeed.Data, 10),
-		indicatorChan: make(chan Indicator),
-	}
-}
-
-func (s *Strategy) AddData(data datafeed.Data) error {
-	for i := 0; i < len(s.dataCache)-1; i++ {
-		s.dataCache[i] = s.dataCache[i+1]
-	}
-	s.dataCache[9] = data
-	go s.determineIndicator()
-	return nil
-}
-
-func (s *Strategy) GetIndicatorFeed() chan Indicator {
-	return s.indicatorChan
-}
-
-func (s *Strategy) determineIndicator() {
-	var ind Indicator
-	if s.dataCache[0].Volume == 0 {
-		ind.Direction = None
-		s.indicatorChan <- ind
-		return
-	}
-	diff := s.dataCache[9].Close - sma(s.dataCache)
-	if diff > -0.1 && diff < 0.1 {
-		ind.Direction = Close
-		ind.Price = s.dataCache[9].Close
-	} else if diff >= 0.1 {
-		ind.Direction = Buy
-		ind.Price = s.dataCache[9].Close
+func NewStrategy(c []config.StrategyConfig, ic chan Indicator) IStrategy {
+	if len(c) == 1 {
+		switch c[0].Type {
+		case "SMA":
+			return NewSmaStrategy(c[0], ic)
+		default:
+			panic(fmt.Errorf("Unrecognized Strategy Type"))
+		}
+	} else if len(c) > 1 {
+		return NewEnsembleStrategy(c, ic)
 	} else {
-		ind.Direction = Sell
-		ind.Price = s.dataCache[9].Close
+		panic(fmt.Errorf("Unrecognized Strategy Config"))
 	}
-	s.indicatorChan <- ind
-}
-
-func sma(data []datafeed.Data) float64 {
-	sum := float64(0)
-	for _, d := range data {
-		sum += d.Close
-	}
-	return sum / float64(len(data))
 }
