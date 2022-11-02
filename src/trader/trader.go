@@ -1,7 +1,7 @@
 package trader
 
 import (
-	"fmt"
+	"log"
 
 	"github.com/tradestax/traedor/auth"
 	"github.com/tradestax/traedor/broker"
@@ -30,7 +30,7 @@ func NewTrader(c *config.Config) *Trader {
 	}
 	return &Trader{
 		authHelper: ah,
-		broker:     broker.NewBroker(),
+		broker:     broker.NewBroker(&c.Broker),
 		data:       dfs,
 		dataChan:   dc,
 		errorChan:  ec,
@@ -50,7 +50,7 @@ func (t *Trader) Run() {
 	for {
 		select {
 		case err := <-t.errorChan:
-			fmt.Println(err.Error())
+			log.Println(err)
 			return
 		case newData := <-t.dataChan:
 			t.strategy.AddData(newData)
@@ -73,7 +73,7 @@ func (t *Trader) Run() {
 			}
 			err := t.broker.SendTrade(trade)
 			if err != nil {
-				fmt.Println("Error on broker send")
+				log.Println(err)
 			}
 		}
 	}
@@ -83,6 +83,6 @@ func (t *Trader) Summary() {
 	account, _ := t.broker.GetAccountStats()
 	finalBalance := account.Balance()
 	percentChange := (finalBalance - t.config.Broker.StartingBalance) / t.config.Broker.StartingBalance
-	fmt.Printf("Final Balance: %.2f\n", finalBalance)
-	fmt.Printf("Percent Change: %.2f%%\n", percentChange*100)
+	log.Printf("Final Balance: %.2f\n", finalBalance)
+	log.Printf("Percent Change: %.2f%%\n", percentChange*100)
 }
