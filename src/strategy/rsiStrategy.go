@@ -18,7 +18,7 @@ type RsiStrategy struct {
 	indicatorChan chan Indicator
 }
 
-func NewRsiStrategy(c config.StrategyConfig, ic chan Indicator) *RsiStrategy {
+func NewRsiStrategy(c config.StrategyConfig, ic chan Indicator) IStrategy {
 	return &RsiStrategy{
 		config:        c,
 		dataCache:     make([]datafeed.Data, 10),

@@ -11,7 +11,7 @@ type SmaStrategy struct {
 	indicatorChan chan Indicator
 }
 
-func NewSmaStrategy(c config.StrategyConfig, ic chan Indicator) *SmaStrategy {
+func NewSmaStrategy(c config.StrategyConfig, ic chan Indicator) IStrategy {
 	return &SmaStrategy{
 		config:        c,
 		dataCache:     make([]datafeed.Data, 10),

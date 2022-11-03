@@ -2,29 +2,36 @@ package strategy
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/tradestax/traedor/config"
 )
 
+type stratBuilder func(config.StrategyConfig, chan Indicator) IStrategy
+
+var (
+	baseStrategies = map[string]stratBuilder{
+		"SMA":  NewSmaStrategy,
+		"MACD": NewMacdStrategy,
+		"RSI":  NewRsiStrategy,
+	}
+	customStrategies = map[string]stratBuilder{}
+)
+
 func NewStrategy(c []config.StrategyConfig, ic chan Indicator) IStrategy {
 	if len(c) == 1 {
-		switch c[0].Type {
-		case "SMA":
-			fmt.Println("Creating SMA strategy")
-			return NewSmaStrategy(c[0], ic)
-		case "MACD":
-			fmt.Println("Creating SMA strategy")
-			return NewMacdStrategy(c[0], ic)
-		case "RSI":
-			fmt.Println("Creating RSI strategy")
-			return NewRsiStrategy(c[0], ic)
-		default:
-			panic(fmt.Errorf("Unrecognized Strategy Type"))
+		if f, ok := baseStrategies[c[0].Type]; ok {
+			log.Printf("Creating %v strategy", c[0].Type)
+			return f(c[0], ic)
 		}
+		if f, ok := customStrategies[c[0].Type]; ok {
+			log.Printf("Creating %v strategy", c[0].Type)
+			return f(c[0], ic)
+		}
+		panic(fmt.Errorf("Unrecognized Strategy %v", c[0].Type))
 	} else if len(c) > 1 {
 		fmt.Println("Configuring Ensemble")
 		return NewEnsembleStrategy(c, ic)
-	} else {
-		panic(fmt.Errorf("Unrecognized Strategy Config"))
 	}
+	panic(fmt.Errorf("Unrecognized Strategy Config"))
 }
