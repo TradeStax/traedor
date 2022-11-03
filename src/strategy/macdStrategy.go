@@ -21,7 +21,7 @@ type MacdStrategy struct {
 	indicatorChan chan Indicator
 }
 
-func NewMacdStrategy(c config.StrategyConfig, ic chan Indicator) *MacdStrategy {
+func NewMacdStrategy(c config.StrategyConfig, ic chan Indicator) IStrategy {
 	return &MacdStrategy{
 		config:        c,
 		dataCache:     make([]datafeed.Data, 10),
