@@ -20,3 +20,6 @@
 
 # Config file
 **/config.yaml
+
+# Ignore custom files
+**/*_custom.go
