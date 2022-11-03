@@ -11,31 +11,34 @@ import (
 )
 
 type Trader struct {
-	authHelper auth.IAuthHelper
-	broker     broker.IBroker
-	data       []datafeed.IDatafeed
-	dataChan   chan datafeed.Data
-	errorChan  chan error
-	strategy   strategy.IStrategy
-	config     *config.Config
+	authHelper    auth.IAuthHelper
+	broker        broker.IBroker
+	data          []datafeed.IDatafeed
+	dataChan      chan datafeed.Data
+	errorChan     chan error
+	indicatorChan chan strategy.Indicator
+	strategy      strategy.IStrategy
+	config        *config.Config
 }
 
 func NewTrader(c *config.Config) *Trader {
 	ah := auth.NewAuthHelper(c)
 	dc := make(chan datafeed.Data, 10)
 	ec := make(chan error)
+	ic := make(chan strategy.Indicator)
 	dfs := make([]datafeed.IDatafeed, len(c.Datafeeds))
 	for i, _ := range c.Datafeeds {
 		dfs[i] = datafeed.NewDatafeed(&c.Datafeeds[i], ah, dc, ec)
 	}
 	return &Trader{
-		authHelper: ah,
-		broker:     broker.NewBroker(&c.Broker),
-		data:       dfs,
-		dataChan:   dc,
-		errorChan:  ec,
-		strategy:   strategy.NewStrategy(),
-		config:     c,
+		authHelper:    ah,
+		broker:        broker.NewBroker(&c.Broker),
+		data:          dfs,
+		dataChan:      dc,
+		errorChan:     ec,
+		indicatorChan: ic,
+		strategy:      strategy.NewStrategy(c.Strategy, ic),
+		config:        c,
 	}
 }
 
@@ -43,7 +46,6 @@ func (t *Trader) Run() {
 	if err := t.authHelper.Authenticate(); err != nil {
 		panic(err)
 	}
-	indChan := t.strategy.GetIndicatorFeed()
 	for _, df := range t.data {
 		df.Start()
 	}
@@ -54,7 +56,7 @@ func (t *Trader) Run() {
 			return
 		case newData := <-t.dataChan:
 			t.strategy.AddData(newData)
-		case newInd := <-indChan:
+		case newInd := <-t.indicatorChan:
 			trade := broker.Trade{
 				Symbol: t.config.Broker.Symbol,
 			}
