@@ -15,6 +15,7 @@ var (
 		"MACD": NewMacdStrategy,
 		"RSI":  NewRsiStrategy,
 	}
+	customStrategies = map[string]stratBuilder{}
 )
 
 func NewStrategy(c []config.StrategyConfig, ic chan Indicator) IStrategy {
