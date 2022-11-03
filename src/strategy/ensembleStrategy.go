@@ -52,9 +52,6 @@ func (s *EnsembleStrategy) GetIndicatorFeed() chan Indicator {
 	return s.indicatorChan
 }
 
-// TODO:
-// This is challenging and clunky
-// should probably use a single channel instead
 func (s *EnsembleStrategy) determineIndicator() {
 	var ind Indicator
 	for i, mChan := range s.memberChans {
