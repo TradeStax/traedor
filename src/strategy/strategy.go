@@ -12,6 +12,9 @@ func NewStrategy(c []config.StrategyConfig, ic chan Indicator) IStrategy {
 		case "SMA":
 			fmt.Println("Creating SMA strategy")
 			return NewSmaStrategy(c[0], ic)
+		case "MACD":
+			fmt.Println("Creating SMA strategy")
+			return NewMacdStrategy(c[0], ic)
 		case "RSI":
 			fmt.Println("Creating RSI strategy")
 			return NewRsiStrategy(c[0], ic)

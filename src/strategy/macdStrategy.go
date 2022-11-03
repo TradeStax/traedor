@@ -8,25 +8,28 @@ import (
 )
 
 const (
-	overboughtVal = 70.0
-	oversoldVal   = 30.0
+	macdSlowPeriod    = 5
+	macdFastPeriod    = 1
+	macdSignalPeriod  = 2
+	macdOverboughtVal = 0.5
+	macdOversoldVal   = -0.5
 )
 
-type RsiStrategy struct {
+type MacdStrategy struct {
 	config        config.StrategyConfig
 	dataCache     []datafeed.Data
 	indicatorChan chan Indicator
 }
 
-func NewRsiStrategy(c config.StrategyConfig, ic chan Indicator) *RsiStrategy {
-	return &RsiStrategy{
+func NewMacdStrategy(c config.StrategyConfig, ic chan Indicator) *MacdStrategy {
+	return &MacdStrategy{
 		config:        c,
 		dataCache:     make([]datafeed.Data, 10),
 		indicatorChan: ic,
 	}
 }
 
-func (s *RsiStrategy) AddData(data datafeed.Data) error {
+func (s *MacdStrategy) AddData(data datafeed.Data) error {
 	for i := 0; i < len(s.dataCache)-1; i++ {
 		s.dataCache[i] = s.dataCache[i+1]
 	}
@@ -35,24 +38,24 @@ func (s *RsiStrategy) AddData(data datafeed.Data) error {
 	return nil
 }
 
-func (s *RsiStrategy) GetIndicatorFeed() chan Indicator {
+func (s *MacdStrategy) GetIndicatorFeed() chan Indicator {
 	return s.indicatorChan
 }
 
-func (s *RsiStrategy) determineIndicator() {
+func (s *MacdStrategy) determineIndicator() {
 	var ind Indicator
 	if s.dataCache[0].Volume == 0 {
 		ind.Direction = None
 		s.indicatorChan <- ind
 		return
 	}
-	rsiVals := rsi(s.dataCache)
-	latestRsi := rsiVals[len(rsiVals)-1]
-	if latestRsi > overboughtVal || latestRsi < oversoldVal {
+	macdVals := macd(s.dataCache)
+	latestMacd := macdVals[len(macdVals)-1]
+	if latestMacd > macdOverboughtVal || latestMacd < macdOversoldVal {
 		// overbought or oversold, close
 		ind.Direction = Close
 		ind.Price = s.dataCache[9].Close
-	} else if rsiIncreasing(rsiVals) {
+	} else if macdIncreasing(macdVals) {
 		// increasing, buy
 		ind.Direction = Buy
 		ind.Price = s.dataCache[9].Close
@@ -64,19 +67,20 @@ func (s *RsiStrategy) determineIndicator() {
 	s.indicatorChan <- ind
 }
 
-func rsi(data []datafeed.Data) []float64 {
+func macd(data []datafeed.Data) []float64 {
 	closePrice := make([]float64, len(data))
 	for i, d := range data {
 		closePrice[i] = d.Close
 	}
-	return talib.Rsi(closePrice, 2)
+	_, signals, _ := talib.Macd(closePrice, macdFastPeriod, macdSlowPeriod, macdSignalPeriod)
+	return signals
 }
 
-func rsiIncreasing(rsiVals []float64) bool {
+func macdIncreasing(macdVals []float64) bool {
 	trendConf := 0
-	// loops through RSI from back to front
-	for i := len(rsiVals) - 1; i > 0; i-- {
-		if rsiVals[i] > rsiVals[i-1] {
+	// loops through MACD from back to front
+	for i := len(macdVals) - 1; i > 0; i-- {
+		if macdVals[i] > macdVals[i-1] {
 			trendConf++
 			if trendConf > 1 {
 				return true

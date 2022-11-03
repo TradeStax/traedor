@@ -23,8 +23,8 @@ func NewEnsembleStrategy(c []config.StrategyConfig, ic chan Indicator) *Ensemble
 		config:        c,
 		indicatorChan: ic,
 		indicators:    make([]Indicator, nMembers),
-		members:       make([]chan Indicator, nMembers),
-		memberChans:   make([]IStrategy, nMembers),
+		members:       make([]IStrategy, nMembers),
+		memberChans:   make([]chan Indicator, nMembers),
 	}
 	// create channels to receive indicators
 	for i := range es.memberChans {
@@ -44,6 +44,7 @@ func (s *EnsembleStrategy) AddData(data datafeed.Data) error {
 			return fmt.Errorf("Failed sending data to ensemble member")
 		}
 	}
+	go s.determineIndicator()
 	return nil
 }
 
@@ -55,9 +56,17 @@ func (s *EnsembleStrategy) GetIndicatorFeed() chan Indicator {
 // This is challenging and clunky
 // should probably use a single channel instead
 func (s *EnsembleStrategy) determineIndicator() {
-	for {
-		select {
-		case err := <-t.errorChan:
+	var ind Indicator
+	for i, mChan := range s.memberChans {
+		s.indicators[i] = <-mChan
+	}
+	ind.Direction = s.indicators[0].Direction
+	ind.Price = s.indicators[0].Price
+	for _, mInd := range s.indicators {
+		if mInd.Direction != ind.Direction {
+			ind.Direction = Close
+			break
 		}
 	}
+	s.indicatorChan <- ind
 }
