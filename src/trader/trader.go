@@ -23,9 +23,9 @@ type Trader struct {
 
 func NewTrader(c *config.Config) *Trader {
 	ah := auth.NewAuthHelper(c)
-	dc := make(chan datafeed.Data, 10)
+	dc := make(chan datafeed.Data, 1)
 	ec := make(chan error)
-	ic := make(chan strategy.Indicator)
+	ic := make(chan strategy.Indicator, 1)
 	dfs := make([]datafeed.IDatafeed, len(c.Datafeeds))
 	for i, _ := range c.Datafeeds {
 		dfs[i] = datafeed.NewDatafeed(&c.Datafeeds[i], ah, dc, ec)
@@ -56,7 +56,8 @@ func (t *Trader) Run() {
 			return
 		case newData := <-t.dataChan:
 			t.strategy.AddData(newData)
-		case newInd := <-t.indicatorChan:
+			newInd := <-t.indicatorChan
+			//case newInd := <-t.indicatorChan:
 			trade := broker.Trade{
 				Symbol: t.config.Broker.Symbol,
 			}

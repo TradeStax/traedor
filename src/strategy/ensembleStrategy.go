@@ -44,7 +44,7 @@ func (s *EnsembleStrategy) AddData(data datafeed.Data) error {
 			return fmt.Errorf("Failed sending data to ensemble member")
 		}
 	}
-	go s.determineIndicator()
+	s.determineIndicator()
 	return nil
 }
 

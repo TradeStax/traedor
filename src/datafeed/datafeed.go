@@ -32,6 +32,6 @@ func NewLocalDatafeed(c *config.DatafeedConfig, dc chan Data, ec chan error) *Da
 		config:    c,
 		dataChan:  dc,
 		errorChan: ec,
-		duration: duration,
+		duration:  duration,
 	}
 }

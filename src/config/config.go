@@ -29,12 +29,15 @@ type BrokerConfig struct {
 }
 
 type DatafeedConfig struct {
-	DataPath string
-	Fields   string
-	Interval string
-	Service  string
-	Symbol   string
-	Type     string
+	DataPath  string
+	Fields    string
+	Interval  string
+	Service   string
+	Symbol    string
+	Type      string
+	StartTime string
+	EndTime   string
+	Print     bool
 }
 
 type StrategyConfig struct {

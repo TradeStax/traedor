@@ -34,7 +34,7 @@ func (s *MacdStrategy) AddData(data datafeed.Data) error {
 		s.dataCache[i] = s.dataCache[i+1]
 	}
 	s.dataCache[9] = data
-	go s.determineIndicator()
+	s.determineIndicator()
 	return nil
 }
 

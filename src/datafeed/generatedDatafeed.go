@@ -12,7 +12,7 @@ type Datafeed struct {
 	config    *config.DatafeedConfig
 	dataChan  chan Data
 	errorChan chan error
-	duration time.Duration
+	duration  time.Duration
 }
 
 const testDataMax = 100
