@@ -7,6 +7,7 @@
 * [config](./config/) module handles configuration management
 * [data](./data/) stores pre-canned test data
 * [datafeed](./datafeed/) module provides the trader with data
+* [reports](./reports/) module collects statistics about the trader and provides reports
 * [strategy](./strategy/) module provides indicators based on data
 * [trader](./trader/) modules brings all of the pieces together
 
