@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"github.com/tradestax/go-tdameritrade"
-	"github.com/tradestax/traedor/config"
+	"github.com/tradestax/traedor/internal/config"
 	"golang.org/x/oauth2"
 )
 

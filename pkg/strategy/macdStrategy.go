@@ -1,8 +1,8 @@
 package strategy
 
 import (
-	"github.com/tradestax/traedor/config"
-	"github.com/tradestax/traedor/datafeed"
+	"github.com/tradestax/traedor/internal/config"
+	"github.com/tradestax/traedor/pkg/datafeed"
 
 	"github.com/markcheno/go-talib"
 )
@@ -34,7 +34,7 @@ func (s *MacdStrategy) AddData(data datafeed.Data) error {
 		s.dataCache[i] = s.dataCache[i+1]
 	}
 	s.dataCache[9] = data
-	go s.determineIndicator()
+	s.determineIndicator()
 	return nil
 }
 

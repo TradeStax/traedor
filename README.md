@@ -1,8 +1,13 @@
-# traedor
+# Traedor
 
-## Algorithmic Trader
+## Source
 
-* [Design Documentation](./design/)
-* [Source Code](./src/)
+* [auth](./pkg/auth/) module handles authenitcate to remote datafeeds and brokers
+* [broker](./pkg/broker/) module handles trading and account management
+* [config](./internal/config/) module handles configuration management
+* [assets](./assets/) stores pre-canned test data
+* [datafeed](./pkg/datafeed/) module provides the trader with data
+* [strategy](./pkg/strategy/) module provides indicators based on data
+* [trader](./pkg/trader/) modules brings all of the pieces together
 
-Traedor is designed to be a pluggable algorithmic trader that can be modified to fill many different use cases. The provided code should allow someone to use either generated or CSV data to build and backtest strategies. The `_custom` strategies are easily built and kept safetly on your local machine.
+See `example-config.yaml` for some quickstart options. This must be copied to `config.yaml` before running

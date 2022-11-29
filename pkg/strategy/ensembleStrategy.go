@@ -3,8 +3,8 @@ package strategy
 import (
 	"fmt"
 
-	"github.com/tradestax/traedor/config"
-	"github.com/tradestax/traedor/datafeed"
+	"github.com/tradestax/traedor/internal/config"
+	"github.com/tradestax/traedor/pkg/datafeed"
 )
 
 type EnsembleStrategy struct {
@@ -44,7 +44,7 @@ func (s *EnsembleStrategy) AddData(data datafeed.Data) error {
 			return fmt.Errorf("Failed sending data to ensemble member")
 		}
 	}
-	go s.determineIndicator()
+	s.determineIndicator()
 	return nil
 }
 

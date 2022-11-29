@@ -5,14 +5,14 @@ import (
 	"math"
 	"time"
 
-	"github.com/tradestax/traedor/config"
+	"github.com/tradestax/traedor/internal/config"
 )
 
 type Datafeed struct {
 	config    *config.DatafeedConfig
 	dataChan  chan Data
 	errorChan chan error
-	duration time.Duration
+	duration  time.Duration
 }
 
 const testDataMax = 100

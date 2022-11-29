@@ -3,7 +3,7 @@ package auth
 import (
 	"log"
 
-	"github.com/tradestax/traedor/config"
+	"github.com/tradestax/traedor/internal/config"
 )
 
 func NewAuthHelper(c *config.Config) IAuthHelper {
