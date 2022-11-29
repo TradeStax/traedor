@@ -7,8 +7,8 @@ import (
 	"sort"
 
 	"github.com/tradestax/go-tdameritrade"
-	"github.com/tradestax/traedor/auth"
-	"github.com/tradestax/traedor/config"
+	"github.com/tradestax/traedor/internal/config"
+	"github.com/tradestax/traedor/pkg/auth"
 )
 
 type TDADatafeed struct {
@@ -84,7 +84,7 @@ type TdaSnapshotDataMsg struct {
 type historicalData []TdaSnapshotDataMsg
 
 func (d historicalData) Len() int {
-    return len(d)
+	return len(d)
 }
 
 func (d historicalData) Less(i, j int) bool {
@@ -92,7 +92,7 @@ func (d historicalData) Less(i, j int) bool {
 }
 
 func (d historicalData) Swap(i, j int) {
-    d[i], d[j] = d[j], d[i]
+	d[i], d[j] = d[j], d[i]
 }
 
 func NewTDADatafeed(c *config.DatafeedConfig, ah auth.IAuthHelper, dc chan Data, ec chan error) *TDADatafeed {

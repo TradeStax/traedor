@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/tradestax/traedor/config"
-	"github.com/tradestax/traedor/trader"
+	"github.com/tradestax/traedor/internal/config"
+	"github.com/tradestax/traedor/pkg/trader"
 )
 
 func main() {
