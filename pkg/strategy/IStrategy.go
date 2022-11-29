@@ -1,6 +1,6 @@
 package strategy
 
-import "github.com/tradestax/traedor/datafeed"
+import "github.com/tradestax/traedor/pkg/datafeed"
 
 type IStrategy interface {
 	AddData(datafeed.Data) error

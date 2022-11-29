@@ -5,7 +5,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/tradestax/traedor/config"
+	"github.com/tradestax/traedor/internal/config"
 )
 
 type Datafeed struct {

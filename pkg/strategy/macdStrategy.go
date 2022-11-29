@@ -1,8 +1,8 @@
 package strategy
 
 import (
-	"github.com/tradestax/traedor/config"
-	"github.com/tradestax/traedor/datafeed"
+	"github.com/tradestax/traedor/internal/config"
+	"github.com/tradestax/traedor/pkg/datafeed"
 
 	"github.com/markcheno/go-talib"
 )

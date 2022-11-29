@@ -3,8 +3,8 @@ package strategy
 import (
 	"fmt"
 
-	"github.com/tradestax/traedor/config"
-	"github.com/tradestax/traedor/datafeed"
+	"github.com/tradestax/traedor/internal/config"
+	"github.com/tradestax/traedor/pkg/datafeed"
 )
 
 type EnsembleStrategy struct {

@@ -15,7 +15,7 @@ Datafeeds:
     Symbol: "SPY"
   # - Type: "CSV"
   #   Symbol: "SPY"
-  #   DataPath: "./data/SPY_5min_sample.csv"
+  #   DataPath: "./assets/SPY_5min_sample.csv"
   #   Interval: "1ms"
   # - Type: "Generated"
   #   Symbol: "sin"

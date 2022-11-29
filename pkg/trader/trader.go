@@ -3,11 +3,11 @@ package trader
 import (
 	"log"
 
-	"github.com/tradestax/traedor/auth"
-	"github.com/tradestax/traedor/broker"
-	"github.com/tradestax/traedor/config"
-	"github.com/tradestax/traedor/datafeed"
-	"github.com/tradestax/traedor/strategy"
+	"github.com/tradestax/traedor/internal/config"
+	"github.com/tradestax/traedor/pkg/auth"
+	"github.com/tradestax/traedor/pkg/broker"
+	"github.com/tradestax/traedor/pkg/datafeed"
+	"github.com/tradestax/traedor/pkg/strategy"
 )
 
 type Trader struct {
