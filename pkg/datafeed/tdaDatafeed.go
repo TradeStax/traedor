@@ -88,7 +88,7 @@ func (d historicalData) Len() int {
 }
 
 func (d historicalData) Less(i, j int) bool {
-	return d[i].F0 > d[j].F0
+	return d[i].F0 < d[j].F0
 }
 
 func (d historicalData) Swap(i, j int) {
