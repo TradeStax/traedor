@@ -73,7 +73,7 @@ type TdaSnapshotContent struct {
 }
 
 type TdaSnapshotDataMsg struct {
-	F0 int     `json:"0"`
+	F0 int64   `json:"0"`
 	F1 float64 `json:"1"`
 	F2 float64 `json:"2"`
 	F3 float64 `json:"3"`
@@ -240,6 +240,7 @@ func (d *TDADatafeed) tdaDatafeed() {
 						sort.Sort(histData)
 						for _, contentMsg := range histData {
 							newData := Data{
+								Date:   contentMsg.F0,
 								High:   contentMsg.F2,
 								Low:    contentMsg.F3,
 								Open:   contentMsg.F1,

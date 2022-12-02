@@ -11,9 +11,10 @@ type stratBuilder func(config.StrategyConfig, chan Indicator) IStrategy
 
 var (
 	baseStrategies = map[string]stratBuilder{
-		"SMA":  NewSmaStrategy,
-		"MACD": NewMacdStrategy,
-		"RSI":  NewRsiStrategy,
+		"SMA":   NewSmaStrategy,
+		"MACD":  NewMacdStrategy,
+		"RSI":   NewRsiStrategy,
+		"Cache": NewCacheStrategy,
 	}
 	customStrategies = map[string]stratBuilder{}
 )
