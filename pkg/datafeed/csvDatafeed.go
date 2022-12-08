@@ -3,6 +3,7 @@ package datafeed
 import (
 	"encoding/csv"
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"time"
@@ -28,31 +29,41 @@ func (d *Datafeed) csvDatafeed(duration time.Duration) {
 	if err != nil {
 		panic(err)
 	}
+	var rData Data
 	for i, r := range records {
-		if i == 0 {
-			continue
-		}
-		rData, err := rowToData(r)
+		rData, err = rowToData(r)
 		if err != nil {
+			if i == 0 {
+				// its likely this is just the header row
+				continue
+			}
 			panic(err)
+		}
+		if d.startTime == 0 {
+			d.startTime = rData.Date
+			startDate := time.Unix(rData.Date, 0)
+			log.Printf("Start Time: %s\n", startDate)
 		}
 		d.dataChan <- rData
 		time.Sleep(duration)
 	}
+	startDate := time.Unix(d.startTime, 0)
+	log.Printf("Start Time: %s\n", startDate)
+	endDate := time.Unix(rData.Date, 0)
+	log.Printf("End Time: %s\n", endDate)
 	d.errorChan <- fmt.Errorf("Test Completed")
 }
 
 func rowToData(r []string) (Data, error) {
 	var d Data
 	for i, v := range r {
-		if i == dateIndex {
-			continue
-		}
 		value, err := strconv.ParseFloat(v, 64)
 		if err != nil {
 			return d, err
 		}
 		switch i {
+		case dateIndex:
+			d.Date = int64(value)/1000
 		case highIndex:
 			d.High = value
 		case lowIndex:

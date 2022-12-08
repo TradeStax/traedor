@@ -13,6 +13,8 @@ type Datafeed struct {
 	dataChan  chan Data
 	errorChan chan error
 	duration  time.Duration
+	startTime int64
+	endTime   int64
 }
 
 const testDataMax = 100

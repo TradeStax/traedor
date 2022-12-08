@@ -83,6 +83,7 @@ func (t *Trader) Run() {
 }
 
 func (t *Trader) Summary() {
+	t.broker.Summary()
 	account, _ := t.broker.GetAccountStats()
 	finalBalance := account.Balance()
 	percentChange := (finalBalance - t.config.Broker.StartingBalance) / t.config.Broker.StartingBalance

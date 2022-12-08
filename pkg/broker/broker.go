@@ -10,6 +10,11 @@ import (
 type Broker struct {
 	account      Account
 	currentTrade *Trade
+	wins         int
+	loses        int
+	cumWin       float64
+	cumLose      float64
+	trades       []float64
 	symbol       string
 	output       string
 }
@@ -22,6 +27,7 @@ func NewBroker(c *config.BrokerConfig) *Broker {
 		},
 		symbol: c.Symbol,
 		output: "test.txt",
+		trades: []float64{},
 	}
 }
 
@@ -59,7 +65,7 @@ func (b *Broker) SendTrade(t Trade) error {
 			log.Printf("Updated Available Balance: %.2f\n", b.account.availableBalance)
 		}
 	default:
-		fmt.Println("Broker No indicator")
+		//fmt.Println("Broker No indicator")
 		return nil
 	}
 	return nil
@@ -73,8 +79,16 @@ func (b *Broker) updateBalance(t Trade) {
 	case Sell:
 		net = b.currentTrade.Price - t.Price
 	}
+	if net > 0 {
+		b.wins++
+		b.cumWin += net
+	} else {
+		b.loses++
+		b.cumLose += net
+	}
 	b.account.balance += net
 	b.account.availableBalance += (b.currentTrade.Price + net)
+	b.trades = append(b.trades, net)
 }
 
 func (b *Broker) validTrade(t *Trade) bool {
@@ -82,4 +96,15 @@ func (b *Broker) validTrade(t *Trade) bool {
 		return false
 	}
 	return true
+}
+
+func (b *Broker) Summary() {
+	log.Printf("Number of wins: %v\n", b.wins)
+	log.Printf("Cumulative win: %v\n", b.cumWin)
+	log.Printf("Number of loses: %v\n", b.loses)
+	log.Printf("Cumulative lose: %v\n", b.cumLose)
+	adjustedNet := b.cumWin*5 + b.cumLose*5
+	adjustedNet -= float64((b.wins + b.loses) * 5)
+	log.Printf("Adjusted net: $%.02f\n", adjustedNet)
+	log.Printf("Trades taken: %v\n", b.trades)
 }
