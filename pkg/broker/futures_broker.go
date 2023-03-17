@@ -105,8 +105,13 @@ func (b *FuturesBroker) Summary() {
 	log.Printf("Cumulative win: %v\n", b.cumWin)
 	log.Printf("Number of loses: %v\n", b.loses)
 	log.Printf("Cumulative lose: %v\n", b.cumLose)
-	adjustedNet := b.cumWin*5 + b.cumLose*5
-	adjustedNet -= float64((b.wins + b.loses) * 5)
-	log.Printf("Adjusted net: $%.02f\n", adjustedNet)
-	log.Printf("Trades taken: %v\n", b.trades)
+	// adjustedNet := b.cumWin*5 + b.cumLose*5
+	// adjustedNet -= float64((b.wins + b.loses) * 5)
+	// log.Printf("Adjusted net: $%.02f\n", adjustedNet)
+	netPoints := float64(0.0)
+	for _, t := range b.trades {
+		netPoints += t
+	}
+	log.Printf("Number of trades: %v\n", len(b.trades))
+	log.Printf("Net points won: %v\n", netPoints)
 }

@@ -36,8 +36,8 @@ type DatafeedConfig struct {
 	Service   string
 	Symbol    string
 	Type      string
-	StartTime string
-	EndTime   string
+	StartTime int64
+	EndTime   int64
 	Print     bool
 }
 

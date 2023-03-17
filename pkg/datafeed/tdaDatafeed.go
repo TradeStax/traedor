@@ -139,9 +139,9 @@ func (d *TDADatafeed) subscribe() error {
 					Account:   d.authHelper.UPN.Accounts[0].AccountID,
 					Source:    d.authHelper.UPN.StreamerInfo.AppID,
 					Parameters: tdameritrade.StreamParams{
-						Symbol:    d.config.Symbol,
-						StartTime: d.config.StartTime,
-						EndTime:   d.config.EndTime,
+						Symbol: d.config.Symbol,
+						//StartTime: d.config.StartTime,
+						//EndTime:   d.config.EndTime,
 						Frequency: d.config.Interval,
 					},
 				},

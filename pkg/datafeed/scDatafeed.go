@@ -24,7 +24,6 @@ func (d *Datafeed) scDatafeed(duration time.Duration) {
 	defer f.Close()
 	csvReader := csv.NewReader(f)
 	var rData Data
-	fmt.Println("READ ONE BY ONE")
 	i := 0
 	for {
 		record, err := csvReader.Read()
@@ -48,6 +47,12 @@ func (d *Datafeed) scDatafeed(duration time.Duration) {
 			d.startTime = rData.Date
 			startDate := time.Unix(rData.Date, 0)
 			log.Printf("Start Time: %s\n", startDate)
+		} else if rData.Date < d.startTime {
+			// skip records before start time
+			continue
+		} else if d.endTime > 0 && rData.Date > d.endTime {
+			// skip records past end time
+			break
 		}
 		d.dataChan <- rData
 		time.Sleep(duration)
