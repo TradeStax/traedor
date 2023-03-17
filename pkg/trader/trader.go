@@ -65,6 +65,7 @@ func (t *Trader) Run() {
 			case strategy.Close:
 				trade.Operation = broker.Close
 				trade.Price = newInd.Price
+				trade.Time = newInd.Time
 			case strategy.Buy:
 				trade.Operation = broker.Buy
 				trade.Price = newInd.Price

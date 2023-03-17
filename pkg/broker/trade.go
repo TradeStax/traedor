@@ -4,6 +4,7 @@ type Trade struct {
 	Symbol    string
 	Operation int
 	Price     float64
+	Time      int64
 }
 
 const (

@@ -3,6 +3,7 @@ package strategy
 type Indicator struct {
 	Direction int
 	Price     float64
+	Time      int64
 }
 
 const (

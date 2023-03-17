@@ -17,6 +17,8 @@ func NewDatafeed(c *config.DatafeedConfig, ah auth.IAuthHelper, dc chan Data, ec
 		df = NewLocalDatafeed(c, dc, ec)
 	case "TDA":
 		df = NewTDADatafeed(c, ah, dc, ec)
+	case "SC":
+		df = NewLocalDatafeed(c, dc, ec)
 	default:
 		panic(fmt.Errorf("Invalid datafeed specified"))
 	}

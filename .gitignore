@@ -23,3 +23,10 @@
 
 # Ignore custom files
 **/*_custom.go
+
+# Ignore data files
+data/
+
+# Ignore binaries
+bin/
+tmp/

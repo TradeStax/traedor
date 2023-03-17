@@ -32,6 +32,8 @@ func (d *Datafeed) Start() {
 		}
 	case "CSV":
 		go d.csvDatafeed(d.duration)
+	case "SC":
+		go d.scDatafeed(d.duration)
 	default:
 		panic(fmt.Errorf("Invalid datafeed specified"))
 	}
