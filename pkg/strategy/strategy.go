@@ -15,6 +15,7 @@ var (
 		"MACD":  NewMacdStrategy,
 		"RSI":   NewRsiStrategy,
 		"Cache": NewCacheStrategy,
+		"SC":    NewScStrategy,
 	}
 	customStrategies = map[string]stratBuilder{}
 )

@@ -1,6 +1,8 @@
 package config
 
 import (
+	"time"
+
 	"github.com/spf13/viper"
 )
 
@@ -44,6 +46,13 @@ type DatafeedConfig struct {
 type StrategyConfig struct {
 	Type   string
 	Symbol string
+	Params StrategyParams
+}
+
+type StrategyParams struct {
+	DataPath  string
+	Values    []string
+	Timeframe time.Duration
 }
 
 func setDefaults(v *viper.Viper) {

@@ -114,4 +114,6 @@ func (b *FuturesBroker) Summary() {
 	}
 	log.Printf("Number of trades: %v\n", len(b.trades))
 	log.Printf("Net points won: %v\n", netPoints)
+        total := float64(b.wins + b.loses)
+        log.Printf("Accuracy: %.02f%%\n", (float64(b.wins)/total)*100)
 }

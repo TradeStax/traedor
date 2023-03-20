@@ -77,7 +77,7 @@ func (t *Trader) Run() {
 			}
 			err := t.broker.SendTrade(trade)
 			if err != nil {
-				log.Println(err)
+				log.Fatalf("%v\n", err.Error())
 			}
 		}
 	}
