@@ -27,8 +27,14 @@ type AuthConfig struct {
 
 type BrokerConfig struct {
 	StartingBalance float64
-	Symbol          string
+	Symbol          BrokerSymbol
 	Type            string
+}
+
+type BrokerSymbol struct {
+	Name       string
+	Margin     float64
+	PointPrice float64
 }
 
 type DatafeedConfig struct {

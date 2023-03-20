@@ -59,7 +59,7 @@ func (t *Trader) Run() {
 			newInd := <-t.indicatorChan
 			//case newInd := <-t.indicatorChan:
 			trade := broker.Trade{
-				Symbol: t.config.Broker.Symbol,
+				Symbol: t.config.Broker.Symbol.Name,
 			}
 			switch newInd.Direction {
 			case strategy.Close:

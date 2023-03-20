@@ -17,6 +17,8 @@ type FuturesBroker struct {
 	cumLose      float64
 	trades       []float64
 	symbol       string
+	margin       float64
+	pointPrice   float64
 	output       string
 }
 
@@ -26,9 +28,11 @@ func NewFuturesBroker(c *config.BrokerConfig) IBroker {
 			balance:          c.StartingBalance,
 			availableBalance: c.StartingBalance,
 		},
-		symbol: c.Symbol,
-		output: "test.txt",
-		trades: []float64{},
+		symbol:     c.Symbol.Name,
+		output:     "test.txt",
+		trades:     []float64{},
+		margin:     c.Symbol.Margin,
+		pointPrice: c.Symbol.PointPrice,
 	}
 }
 
@@ -51,7 +55,7 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 				return fmt.Errorf("Failed to create Buy: Insufficient account balance")
 			}
 			log.Printf("Broker Create Buy: Symbol: %v Price: %.2f\n", t.Symbol, t.Price)
-			b.account.availableBalance -= t.Price
+			b.account.availableBalance -= b.margin
 			b.currentTrade = &t
 			log.Printf("Updated Available Balance: %.2f\n", b.account.availableBalance)
 		}
@@ -61,7 +65,7 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 				return fmt.Errorf("Failed to create Sell: Insufficient account balance")
 			}
 			log.Printf("Broker Create Sell: Symbol %v Price: %.2f\n", t.Symbol, t.Price)
-			b.account.availableBalance -= t.Price
+			b.account.availableBalance -= b.margin
 			b.currentTrade = &t
 			log.Printf("Updated Available Balance: %.2f\n", b.account.availableBalance)
 		}
@@ -76,9 +80,9 @@ func (b *FuturesBroker) updateBalance(t Trade) {
 	var net float64
 	switch b.currentTrade.Operation {
 	case Buy:
-		net = t.Price - b.currentTrade.Price
+		net = (t.Price - b.currentTrade.Price) * b.pointPrice
 	case Sell:
-		net = b.currentTrade.Price - t.Price
+		net = (b.currentTrade.Price - t.Price) * b.pointPrice
 	}
 	if net > 0 {
 		b.wins++
@@ -88,13 +92,13 @@ func (b *FuturesBroker) updateBalance(t Trade) {
 		b.cumLose += net
 	}
 	b.account.balance += net
-	b.account.availableBalance += (b.currentTrade.Price + net)
+	b.account.availableBalance += (b.margin + net)
 	b.trades = append(b.trades, net)
 	fmt.Printf("Close trade at %v\n", time.Unix(t.Time, 0))
 }
 
 func (b *FuturesBroker) validTrade(t *Trade) bool {
-	if b.account.availableBalance-200 < 0 {
+	if b.account.availableBalance-b.margin < 0 {
 		return false
 	}
 	return true
@@ -102,18 +106,15 @@ func (b *FuturesBroker) validTrade(t *Trade) bool {
 
 func (b *FuturesBroker) Summary() {
 	log.Printf("Number of wins: %v\n", b.wins)
-	log.Printf("Cumulative win: %v\n", b.cumWin)
+	log.Printf("Cumulative win amount: $%v\n", b.cumWin)
 	log.Printf("Number of loses: %v\n", b.loses)
-	log.Printf("Cumulative lose: %v\n", b.cumLose)
-	// adjustedNet := b.cumWin*5 + b.cumLose*5
-	// adjustedNet -= float64((b.wins + b.loses) * 5)
-	// log.Printf("Adjusted net: $%.02f\n", adjustedNet)
-	netPoints := float64(0.0)
-	for _, t := range b.trades {
-		netPoints += t
-	}
+	log.Printf("Cumulative lose amount: $%v\n", b.cumLose)
+	// net := float64(0.0)
+	// for _, t := range b.trades {
+	//	net += t
+	// }
 	log.Printf("Number of trades: %v\n", len(b.trades))
-	log.Printf("Net points won: %v\n", netPoints)
-        total := float64(b.wins + b.loses)
-        log.Printf("Accuracy: %.02f%%\n", (float64(b.wins)/total)*100)
+	log.Printf("Net profit: $%v\n", (b.cumWin + b.cumLose))
+	total := float64(b.wins + b.loses)
+	log.Printf("Accuracy: %.02f%%\n", (float64(b.wins)/total)*100)
 }

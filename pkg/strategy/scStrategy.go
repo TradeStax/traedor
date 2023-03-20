@@ -135,7 +135,7 @@ func (s *ScStrategy) getStudies(date int64) {
 		values, err := s.r.Read()
 		if err != nil {
 			if err == io.EOF {
-				log.Println("No more study values to read, using last values")
+				// log.Println("No more values to read, using last values")
 				break
 			}
 			panic(err)

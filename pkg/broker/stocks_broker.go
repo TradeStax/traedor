@@ -25,7 +25,7 @@ func NewStocksBroker(c *config.BrokerConfig) IBroker {
 			balance:          c.StartingBalance,
 			availableBalance: c.StartingBalance,
 		},
-		symbol: c.Symbol,
+		symbol: c.Symbol.Name,
 		output: "test.txt",
 		trades: []float64{},
 	}
