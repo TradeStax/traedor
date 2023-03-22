@@ -11,7 +11,6 @@ type brokerBuilder func(*config.BrokerConfig) IBroker
 
 var (
 	baseBrokers = map[string]brokerBuilder{
-		"Stocks":  NewStocksBroker,
 		"Futures": NewFuturesBroker,
 	}
 	customBrokers = map[string]brokerBuilder{}

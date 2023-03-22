@@ -71,7 +71,7 @@ func NewScStrategy(c config.StrategyConfig, ic chan Indicator) IStrategy {
 		},
 		candleDuration: int64(c.Params.Timeframe.Seconds()),
 		r:              csvReader,
-		stop:           float64(2.0),
+		stop:           float64(10.0),
 	}
 }
 
@@ -95,33 +95,25 @@ func (s *ScStrategy) determineIndicator() {
 		Time:  s.dataCache[9].Date,
 	}
 	crossDir := isCross(s.values.studies["12B"], s.dataCache)
-	if crossDir.below {
+	bCrossDir := isCross(s.values.studies["4B"], s.dataCache)
+	if crossDir.below && s.values.studies["VEMA"] < s.values.studies["12B"] {
 		ind.Direction = Sell
 		s.lastSend = ind
-	} else if crossDir.above {
+		s.currStop = ind.Price + s.stop
+	} else if crossDir.above && s.values.studies["VEMA"] > s.values.studies["12B"] {
 		ind.Direction = Buy
 		s.lastSend = ind
-	} else if s.isStop() {
-		ind.Direction = Close
+		s.currStop = ind.Price - s.stop
+	} else if bCrossDir.below && s.values.studies["VEMA"] < s.values.studies["4B"] {
+		ind.Direction = Sell
 		s.lastSend = ind
+		s.currStop = ind.Price + s.stop
+	} else if bCrossDir.above && s.values.studies["VEMA"] > s.values.studies["4B"] {
+		ind.Direction = Buy
+		s.lastSend = ind
+		s.currStop = ind.Price - s.stop
 	}
 	s.indicatorChan <- ind
-}
-
-func (s *ScStrategy) isStop() bool {
-	currPrice := s.dataCache[9].Close
-	if s.lastSend.Direction == Sell {
-		if currPrice >= s.currStop {
-			return true
-		}
-		s.currStop = minf(s.currStop, currPrice+s.stop)
-	} else if s.lastSend.Direction == Buy {
-		if currPrice <= s.currStop {
-			return true
-		}
-		s.currStop = maxf(s.currStop, currPrice-s.stop)
-	}
-	return false
 }
 
 func (s *ScStrategy) getStudies(date int64) {
@@ -163,30 +155,16 @@ func (s *ScStrategy) getStudies(date int64) {
 
 func isCross(point float64, data []datafeed.Data) cross {
 	var dir cross
-	start := point - data[0].Close
-	for _, d := range data {
-		diff := point - d.Close
+	start := point - data[9].Close
+	for i := 8; i >= 0; i-- {
+		diff := point - data[i].Close
 		if start < 0 && start-diff < start {
-			dir.above = true
+			dir.below = true
 			return dir
 		} else if start > 0 && start-diff > start {
-			dir.below = true
+			dir.above = true
 			return dir
 		}
 	}
 	return dir
-}
-
-func maxf(a, b float64) float64 {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func minf(a, b float64) float64 {
-	if a < b {
-		return a
-	}
-	return b
 }

@@ -26,9 +26,11 @@ type AuthConfig struct {
 }
 
 type BrokerConfig struct {
-	StartingBalance float64
-	Symbol          BrokerSymbol
-	Type            string
+	StartingBalance    float64
+	WeeklyWithdrawl    float64
+	Symbol             BrokerSymbol
+	Type               string
+	TrailingStopAmount float64
 }
 
 type BrokerSymbol struct {
