@@ -26,10 +26,10 @@ See `example-config.yaml` for some quickstart options. This must be copied to `c
 
 ## Upcoming
 
-[] Add GitHub Release to avoid needing to build to use
-[] Improved Documentation for using Sierra Chart Data
-[] Improved Documentation on creating Strategies
-[] Config drive strategy
+- [ ] Add GitHub Release to avoid needing to build to use
+- [ ] Improved Documentation for using Sierra Chart Data
+- [ ] Improved Documentation on creating Strategies
+- [ ] Config drive strategy
 
 ## Source
 
