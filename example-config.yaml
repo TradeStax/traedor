@@ -1,26 +1,73 @@
-AuthConfig:
-  AuthHelper: "TDA"
-  UserEnvVar: "TDAMERITRADE_CLIENT_ID"
-  CallbackURL: "https://127.0.0.1/callback"
+# Trador Config
 
+# Auth Helper configuration
+# Used for TDA
+# For CSV or backtesting use "None"
+AuthConfig:
+  AuthHelper: "None"
+  # Env vars to configure TDA Auth helper
+  # UserEnvVar: "TDAMERITRADE_CLIENT_ID"
+  # CallbackURL: "https://127.0.0.1/callback"
+
+# Datafeed configuration
+# For Futures testing, us "SC"
+# Required Fields
+# Type - Type of datafeed, in most cases "SC"
+# Symbol - Symbol name, just used for logging
+# DataPath - Path to data file
+# Interval - delay used in loop, in most cases "0ns" is fine, this is instanteous
 Datafeeds:
-  - Type: "TDA"
-    Service: "CHART_EQUITY"
-    Symbol: "SPY"
-    Fields: "0,1,2,3,4,5,6"
-    Interval: "1m"
-  - Type: "TDA"
-    Service: "QUOTE"
-    Fields: "0,1,2,3,4,5,8"
-    Symbol: "SPY"
-  # - Type: "CSV"
-  #   Symbol: "SPY"
-  #   DataPath: "./assets/SPY_5min_sample.csv"
-  #   Interval: "1ms"
+  - Type: "SC"
+    Symbol: "/MES"
+    DataPath: "./data/MESH23_FUT_CME.txt"
+    Interval: "0ns"
+    # optional: start time as unix timestamp
+    # StartTime: 1672549200
+    # optional: end time as unit timestamp
+    # EndTime: 	1675227600
   # - Type: "Generated"
   #   Symbol: "sin"
-  #   Interval: "1ms"
+  #   Interval: "0ns"
 
+# Broker Configuration
+# For all Brokers the following are required
+# Type - What type of broker, for now "Futures"
+# StartingBalance - Account balance to start
+# Symbol - use to log trades against symbol
+# 
+# Required fields for futures brokers
+# WeeklyWithdrawl - How much to withdrawl each week
+# TrailingStopAmount - trailing stop, take profit will be 2x this value
+# FeePerSide - fee per contract per side (open / close)
+# OpenSlippage - How much to slip on trade open
+#
+# Symbol Fields
+# Name - used for logging
+# Margin - cost per contract
+# PointPrice - price per point movement
 Broker:
-  StartingBalance: 100.0
-  Symbol: "SPY"
+  Type: "Futures"
+  StartingBalance: 1700.0
+  WeeklyWithdrawl: 0.0
+  TrailingStopAmount: 10.0
+  FeePerSide: 1.0
+  OpenSlippage: 0.25
+  Symbol: 
+    Name: "/MES"
+    Margin: 1200
+    PointPrice: 5
+
+# Strategy Configuration
+# Type - For now "SC" is recommended but you can also pick from "RSI", "MACD", "SMA"
+# Symbol - used for logging
+# Params - used for SC strategy
+# DataPath - Patch to Sierra Chart studies file
+# Values - Values to use from studies file
+# Timeframe - timeframe of studies file
+Strategy:
+  - Type: "SC"
+    Symbol: "/MES"
+    Params:
+      DataPath: "./data/MESH23_FUT_CME-1Min.txt"
+      Values: ["12B"]
+      Timeframe: "1m"

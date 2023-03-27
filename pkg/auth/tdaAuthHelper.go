@@ -92,7 +92,7 @@ func (h *TDAAuthHelper) AuthenticateHandler(w http.ResponseWriter, req *http.Req
 	if err != nil {
 		w.Write([]byte(err.Error()))
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Println("TDAAuthHelper.AuthenticateHandler: StartOAuth2Flow failed. Error: %v\n", err.Error())
+		log.Printf("TDAAuthHelper.AuthenticateHandler: StartOAuth2Flow failed. Error: %v\n", err.Error())
 		return
 	}
 
@@ -105,7 +105,7 @@ func (h *TDAAuthHelper) CallbackHandler(w http.ResponseWriter, req *http.Request
 	if err != nil {
 		w.Write([]byte(err.Error()))
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Println("TDAAuthHelper.CallbackHandler: FinishOAuth2Flow failed. Error: %v\n", err.Error())
+		log.Printf("TDAAuthHelper.CallbackHandler: FinishOAuth2Flow failed. Error: %v\n", err.Error())
 		return
 	}
 
