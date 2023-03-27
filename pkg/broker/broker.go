@@ -25,7 +25,7 @@ func NewBroker(c *config.BrokerConfig) IBroker {
 		log.Printf("Creating %v broker", c.Type)
 		return f(c)
 	}
-	fmt.Println("Error, unrecognized broker %v\n", c.Type)
+	log.Fatalf("Error, unrecognized broker %v\n", c.Type)
 	panic(fmt.Errorf("Unable to create broker"))
 	return nil
 }

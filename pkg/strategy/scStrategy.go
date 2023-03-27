@@ -95,20 +95,11 @@ func (s *ScStrategy) determineIndicator() {
 		Time:  s.dataCache[9].Date,
 	}
 	crossDir := isCross(s.values.studies["12B"], s.dataCache)
-	bCrossDir := isCross(s.values.studies["4B"], s.dataCache)
-	if crossDir.below && s.values.studies["VEMA"] < s.values.studies["12B"] {
+	if crossDir.below {
 		ind.Direction = Sell
 		s.lastSend = ind
 		s.currStop = ind.Price + s.stop
-	} else if crossDir.above && s.values.studies["VEMA"] > s.values.studies["12B"] {
-		ind.Direction = Buy
-		s.lastSend = ind
-		s.currStop = ind.Price - s.stop
-	} else if bCrossDir.below && s.values.studies["VEMA"] < s.values.studies["4B"] {
-		ind.Direction = Sell
-		s.lastSend = ind
-		s.currStop = ind.Price + s.stop
-	} else if bCrossDir.above && s.values.studies["VEMA"] > s.values.studies["4B"] {
+	} else if crossDir.above {
 		ind.Direction = Buy
 		s.lastSend = ind
 		s.currStop = ind.Price - s.stop
