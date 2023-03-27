@@ -31,6 +31,9 @@ type BrokerConfig struct {
 	Symbol             BrokerSymbol
 	Type               string
 	TrailingStopAmount float64
+	FeePerSide         float64
+	OpenSlippage       float64
+	CloseSlippage      float64
 }
 
 type BrokerSymbol struct {
