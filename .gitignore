@@ -23,3 +23,11 @@
 
 # Ignore custom files
 **/*_custom.go
+
+# Ignore data files
+data/
+trades.csv
+
+# Ignore binaries
+bin/
+tmp/

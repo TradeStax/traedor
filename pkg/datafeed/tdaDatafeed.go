@@ -73,7 +73,7 @@ type TdaSnapshotContent struct {
 }
 
 type TdaSnapshotDataMsg struct {
-	F0 int     `json:"0"`
+	F0 int64   `json:"0"`
 	F1 float64 `json:"1"`
 	F2 float64 `json:"2"`
 	F3 float64 `json:"3"`
@@ -88,7 +88,7 @@ func (d historicalData) Len() int {
 }
 
 func (d historicalData) Less(i, j int) bool {
-	return d[i].F0 > d[j].F0
+	return d[i].F0 < d[j].F0
 }
 
 func (d historicalData) Swap(i, j int) {
@@ -139,9 +139,9 @@ func (d *TDADatafeed) subscribe() error {
 					Account:   d.authHelper.UPN.Accounts[0].AccountID,
 					Source:    d.authHelper.UPN.StreamerInfo.AppID,
 					Parameters: tdameritrade.StreamParams{
-						Symbol:    d.config.Symbol,
-						StartTime: d.config.StartTime,
-						EndTime:   d.config.EndTime,
+						Symbol: d.config.Symbol,
+						//StartTime: d.config.StartTime,
+						//EndTime:   d.config.EndTime,
 						Frequency: d.config.Interval,
 					},
 				},
@@ -240,6 +240,7 @@ func (d *TDADatafeed) tdaDatafeed() {
 						sort.Sort(histData)
 						for _, contentMsg := range histData {
 							newData := Data{
+								Date:   contentMsg.F0,
 								High:   contentMsg.F2,
 								Low:    contentMsg.F3,
 								Open:   contentMsg.F1,

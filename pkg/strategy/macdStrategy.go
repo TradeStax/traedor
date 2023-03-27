@@ -55,6 +55,7 @@ func (s *MacdStrategy) determineIndicator() {
 		// overbought or oversold, close
 		ind.Direction = Close
 		ind.Price = s.dataCache[9].Close
+		ind.Time = s.dataCache[9].Date
 	} else if macdIncreasing(macdVals) {
 		// increasing, buy
 		ind.Direction = Buy

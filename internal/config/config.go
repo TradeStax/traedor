@@ -1,6 +1,8 @@
 package config
 
 import (
+	"time"
+
 	"github.com/spf13/viper"
 )
 
@@ -24,8 +26,20 @@ type AuthConfig struct {
 }
 
 type BrokerConfig struct {
-	StartingBalance float64
-	Symbol          string
+	StartingBalance    float64
+	WeeklyWithdrawl    float64
+	Symbol             BrokerSymbol
+	Type               string
+	TrailingStopAmount float64
+	FeePerSide         float64
+	OpenSlippage       float64
+	CloseSlippage      float64
+}
+
+type BrokerSymbol struct {
+	Name       string
+	Margin     float64
+	PointPrice float64
 }
 
 type DatafeedConfig struct {
@@ -35,14 +49,21 @@ type DatafeedConfig struct {
 	Service   string
 	Symbol    string
 	Type      string
-	StartTime string
-	EndTime   string
+	StartTime int64
+	EndTime   int64
 	Print     bool
 }
 
 type StrategyConfig struct {
 	Type   string
 	Symbol string
+	Params StrategyParams
+}
+
+type StrategyParams struct {
+	DataPath  string
+	Values    []string
+	Timeframe time.Duration
 }
 
 func setDefaults(v *viper.Viper) {

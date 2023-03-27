@@ -13,6 +13,8 @@ type Datafeed struct {
 	dataChan  chan Data
 	errorChan chan error
 	duration  time.Duration
+	startTime int64
+	endTime   int64
 }
 
 const testDataMax = 100
@@ -30,6 +32,8 @@ func (d *Datafeed) Start() {
 		}
 	case "CSV":
 		go d.csvDatafeed(d.duration)
+	case "SC":
+		go d.scDatafeed(d.duration)
 	default:
 		panic(fmt.Errorf("Invalid datafeed specified"))
 	}

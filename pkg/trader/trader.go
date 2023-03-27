@@ -55,34 +55,35 @@ func (t *Trader) Run() {
 			log.Println(err)
 			return
 		case newData := <-t.dataChan:
+			t.broker.AddData(newData)
 			t.strategy.AddData(newData)
 			newInd := <-t.indicatorChan
 			//case newInd := <-t.indicatorChan:
 			trade := broker.Trade{
-				Symbol: t.config.Broker.Symbol,
+				Symbol: t.config.Broker.Symbol.Name,
+				Time:   newData.Date,
+				Price:  newData.Close,
 			}
 			switch newInd.Direction {
 			case strategy.Close:
 				trade.Operation = broker.Close
-				trade.Price = newInd.Price
 			case strategy.Buy:
 				trade.Operation = broker.Buy
-				trade.Price = newInd.Price
 			case strategy.Sell:
 				trade.Operation = broker.Sell
-				trade.Price = newInd.Price
 			default:
 				trade.Operation = broker.None
 			}
 			err := t.broker.SendTrade(trade)
 			if err != nil {
-				log.Println(err)
+				log.Fatalf("%v\n", err.Error())
 			}
 		}
 	}
 }
 
 func (t *Trader) Summary() {
+	t.broker.Summary()
 	account, _ := t.broker.GetAccountStats()
 	finalBalance := account.Balance()
 	percentChange := (finalBalance - t.config.Broker.StartingBalance) / t.config.Broker.StartingBalance

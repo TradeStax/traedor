@@ -3,37 +3,41 @@ package datafeed
 import (
 	"encoding/csv"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
 const (
-	dateIndex  = 0
-	openIndex  = 1
-	highIndex  = 2
-	lowIndex   = 3
-	closeIndex = 4
-	volIndex   = 5
+	scDateLayout     = "2006/1/2 15:04:05.000"
+	scDateLayoutNoMs = "2006/1/2 15:04:05"
 )
 
-func (d *Datafeed) csvDatafeed(duration time.Duration) {
+func (d *Datafeed) scDatafeed(duration time.Duration) {
 	f, err := os.Open(d.config.DataPath)
 	if err != nil {
 		panic(fmt.Errorf("Failed to open datapath"))
 	}
 	defer f.Close()
 	csvReader := csv.NewReader(f)
-	records, err := csvReader.ReadAll()
-	if err != nil {
-		panic(err)
-	}
 	var rData Data
-	for i, r := range records {
-		rData, err = rowToData(r)
+	i := 0
+	for {
+		record, err := csvReader.Read()
+		// Stop at EOF.
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			panic(err)
+		}
+		rData, err = scRowToData(record)
 		if err != nil {
 			if i == 0 {
+				i++
 				// its likely this is just the header row
 				continue
 			}
@@ -43,6 +47,12 @@ func (d *Datafeed) csvDatafeed(duration time.Duration) {
 			d.startTime = rData.Date
 			startDate := time.Unix(rData.Date, 0)
 			log.Printf("Start Time: %s\n", startDate)
+		} else if rData.Date < d.startTime {
+			// skip records before start time
+			continue
+		} else if d.endTime > 0 && rData.Date > d.endTime {
+			// skip records past end time
+			break
 		}
 		d.dataChan <- rData
 		time.Sleep(duration)
@@ -54,16 +64,28 @@ func (d *Datafeed) csvDatafeed(duration time.Duration) {
 	d.errorChan <- fmt.Errorf("Test Completed")
 }
 
-func rowToData(r []string) (Data, error) {
+func scRowToData(r []string) (Data, error) {
 	var d Data
+	t, err := time.Parse(scDateLayout, r[0]+r[1])
+	//time, err := time.Parse(scDateLayout, r[0])
+	if err != nil {
+		t, err = time.Parse(scDateLayoutNoMs, r[0]+r[1])
+		if err != nil {
+			return d, err
+		}
+	}
+	d.Date = t.Unix()
 	for i, v := range r {
+		if i < 2 {
+			continue
+		}
+		v := strings.Trim(v, " ")
 		value, err := strconv.ParseFloat(v, 64)
+		value = value / 100
 		if err != nil {
 			return d, err
 		}
 		switch i {
-		case dateIndex:
-			d.Date = int64(value)/1000
 		case highIndex:
 			d.High = value
 		case lowIndex:
@@ -74,8 +96,8 @@ func rowToData(r []string) (Data, error) {
 			d.Close = value
 		case volIndex:
 			d.Volume = value
-		default:
-			return d, fmt.Errorf("Unknown index")
+			//default:
+			//return d, fmt.Errorf("Unknown index")
 		}
 	}
 	return d, nil
