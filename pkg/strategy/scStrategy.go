@@ -76,6 +76,10 @@ func NewScStrategy(c config.StrategyConfig, ic chan Indicator) IStrategy {
 }
 
 func (s *ScStrategy) AddData(data datafeed.Data) error {
+	if data.Close == s.dataCache[9].Close {
+		s.indicatorChan <- Indicator{Direction: None}
+		return nil
+	}
 	for i := 0; i < len(s.dataCache)-1; i++ {
 		s.dataCache[i] = s.dataCache[i+1]
 	}

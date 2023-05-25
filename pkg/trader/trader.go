@@ -56,7 +56,11 @@ func (t *Trader) Run() {
 			return
 		case newData := <-t.dataChan:
 			t.broker.AddData(newData)
-			t.strategy.AddData(newData)
+			err := t.strategy.AddData(newData)
+			if err != nil {
+				log.Println(err.Error())
+				return
+			}
 			newInd := <-t.indicatorChan
 			//case newInd := <-t.indicatorChan:
 			trade := broker.Trade{
@@ -74,7 +78,7 @@ func (t *Trader) Run() {
 			default:
 				trade.Operation = broker.None
 			}
-			err := t.broker.SendTrade(trade)
+			err = t.broker.SendTrade(trade)
 			if err != nil {
 				log.Fatalf("%v\n", err.Error())
 			}

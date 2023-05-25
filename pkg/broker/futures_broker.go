@@ -71,6 +71,9 @@ func (b *FuturesBroker) AddData(d datafeed.Data) {
 }
 
 func (b *FuturesBroker) SendTrade(t Trade) error {
+	if t.Operation == None {
+		return nil
+	}
 	tradeTime := time.Unix(t.Time, 0)
 	if _, week := tradeTime.ISOWeek(); week != b.week {
 		b.account.WeeklyWithdrawl()
@@ -85,8 +88,9 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 			}
 		}
 	}
-	q := max(1, (b.account.availableBalance / ((b.margin) + b.feePerSide)))
-	tradeQ := int(min(50, q))
+	// q := max(1, (b.account.availableBalance / ((b.margin) + b.feePerSide)))
+	// tradeQ := int(min(4, q))
+	tradeQ := 1
 	fee := float64(tradeQ) * b.feePerSide
 	switch t.Operation {
 	case Close:
@@ -108,7 +112,8 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 			b.currentTrade.Quantity = tradeQ
 			// slippage
 			b.currentTrade.Price = b.currentPrice + b.config.OpenSlippage
-			b.currentTrade.ProfitPrice = b.currentTrade.Price + (b.stopAmount * 2)
+			b.currentTrade.ProfitPrice = b.currentTrade.Price + (b.stopAmount * 10)
+			//b.currentTrade.ProfitPrice = b.currentTrade.Price + (b.stopAmount)
 			b.currentTrade.StopPrice = b.currentTrade.Price - b.stopAmount
 			log.Printf("Updated Available Balance: %.2f\n", b.account.availableBalance)
 		}
@@ -129,7 +134,8 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 			b.currentTrade.Quantity = tradeQ
 			// slippage
 			b.currentTrade.Price = b.currentPrice - b.config.OpenSlippage
-			b.currentTrade.ProfitPrice = b.currentTrade.Price - (b.stopAmount * 2)
+			b.currentTrade.ProfitPrice = b.currentTrade.Price - (b.stopAmount * 10)
+			//b.currentTrade.ProfitPrice = b.currentTrade.Price - (b.stopAmount)
 			b.currentTrade.StopPrice = b.currentTrade.Price + b.stopAmount
 			log.Printf("Updated Available Balance: %.2f\n", b.account.availableBalance)
 		}

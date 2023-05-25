@@ -86,15 +86,9 @@ func scRowToData(r []string) (Data, error) {
 			return d, err
 		}
 		switch i {
-		case highIndex:
-			d.High = value
-		case lowIndex:
-			d.Low = value
-		case openIndex:
-			d.Open = value
-		case closeIndex:
+		case 3:
 			d.Close = value
-		case volIndex:
+		case 6:
 			d.Volume = value
 			//default:
 			//return d, fmt.Errorf("Unknown index")
