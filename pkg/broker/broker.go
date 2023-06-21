@@ -3,12 +3,15 @@ package broker
 import (
 	"fmt"
 	"log"
+
+	"github.com/tradestax/traedor/pkg/broker/stop"
 )
 
 type Config struct {
 	StartingBalance    float64
 	WeeklyWithdrawl    float64
 	Symbol             Symbol
+	Stops              []stop.Config
 	Type               string
 	TrailingStopAmount float64
 	FeePerSide         float64

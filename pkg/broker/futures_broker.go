@@ -117,7 +117,13 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 			b.currentTrade = &t
 			b.currentTrade.Quantity = tradeQ
 			// set stops
-			b.currentTrade.Stops = []stop.IStop{stop.NewStop("breakeven")}
+			tradeStops := make([]stop.IStop, len(b.config.Stops))
+			for i := 0; i < len(b.config.Stops); i++ {
+				b.config.Stops[i].Direction = Buy
+				b.config.Stops[i].FillPrice = b.currentTrade.Price
+				tradeStops[i] = stop.NewStop(&b.config.Stops[i])
+			}
+			b.currentTrade.Stops = tradeStops
 			// slippage
 			b.currentTrade.Price = b.currentPrice + b.config.OpenSlippage
 			b.currentTrade.ProfitPrice = b.currentTrade.Price + (b.stopAmount * 2)
@@ -142,7 +148,13 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 			b.currentTrade = &t
 			b.currentTrade.Quantity = tradeQ
 			// set stops
-			b.currentTrade.Stops = []stop.IStop{stop.NewStop("breakeven")}
+			tradeStops := make([]stop.IStop, len(b.config.Stops))
+			for i := 0; i < len(b.config.Stops); i++ {
+				b.config.Stops[i].Direction = Sell
+				b.config.Stops[i].FillPrice = b.currentTrade.Price
+				tradeStops[i] = stop.NewStop(&b.config.Stops[i])
+			}
+			b.currentTrade.Stops = tradeStops
 			// slippage
 			b.currentTrade.Price = b.currentPrice - b.config.OpenSlippage
 			b.currentTrade.ProfitPrice = b.currentTrade.Price - (b.stopAmount * 2)
