@@ -4,11 +4,22 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tradestax/traedor/internal/config"
 	"github.com/tradestax/traedor/pkg/auth"
 )
 
-func NewDatafeed(c *config.DatafeedConfig, ah auth.IAuthHelper, dc chan Data, ec chan error) IDatafeed {
+type Config struct {
+	DataPath  string
+	Fields    string
+	Interval  string
+	Service   string
+	Symbol    string
+	Type      string
+	StartTime int64
+	EndTime   int64
+	Print     bool
+}
+
+func NewDatafeed(c *Config, ah auth.IAuthHelper, dc chan Data, ec chan error) IDatafeed {
 	var df IDatafeed
 	switch c.Type {
 	case "Generated":
@@ -25,7 +36,7 @@ func NewDatafeed(c *config.DatafeedConfig, ah auth.IAuthHelper, dc chan Data, ec
 	return df
 }
 
-func NewLocalDatafeed(c *config.DatafeedConfig, dc chan Data, ec chan error) *Datafeed {
+func NewLocalDatafeed(c *Config, dc chan Data, ec chan error) *Datafeed {
 	duration, err := time.ParseDuration(c.Interval)
 	if err != nil {
 		panic(err)

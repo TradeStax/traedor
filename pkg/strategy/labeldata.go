@@ -6,12 +6,11 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/tradestax/traedor/internal/config"
 	"github.com/tradestax/traedor/pkg/datafeed"
 )
 
 type LabelStrategy struct {
-	config        config.StrategyConfig
+	config        *Config
 	indicatorChan chan Indicator
 	data          datafeed.Data
 	writer        *csv.Writer
@@ -26,7 +25,7 @@ type labeledData struct {
 	label     string
 }
 
-func NewLabelStrategy(c config.StrategyConfig, ic chan Indicator) IStrategy {
+func NewLabelStrategy(c *Config, ic chan Indicator) IStrategy {
 	file, err := os.Create("data.csv")
 	if err != nil {
 		log.Fatal(err)

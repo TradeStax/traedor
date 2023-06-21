@@ -3,19 +3,18 @@ package strategy
 import (
 	"fmt"
 
-	"github.com/tradestax/traedor/internal/config"
 	"github.com/tradestax/traedor/pkg/datafeed"
 )
 
 type EnsembleStrategy struct {
-	config        []config.StrategyConfig
+	config        []Config
 	indicatorChan chan Indicator
 	indicators    []Indicator
 	members       []IStrategy
 	memberChans   []chan Indicator
 }
 
-func NewEnsembleStrategy(c []config.StrategyConfig, ic chan Indicator) *EnsembleStrategy {
+func NewEnsembleStrategy(c []Config, ic chan Indicator) *EnsembleStrategy {
 	// number of members in ensemble
 	nMembers := len(c)
 	// create ensemble struct
@@ -32,7 +31,7 @@ func NewEnsembleStrategy(c []config.StrategyConfig, ic chan Indicator) *Ensemble
 	}
 	// create the member strategies
 	for i := range es.members {
-		es.members[i] = NewStrategy([]config.StrategyConfig{c[i]}, es.memberChans[i])
+		es.members[i] = NewStrategy([]Config{c[i]}, es.memberChans[i])
 	}
 	return &es
 }

@@ -4,12 +4,10 @@ import (
 	"fmt"
 	"math"
 	"time"
-
-	"github.com/tradestax/traedor/internal/config"
 )
 
 type Datafeed struct {
-	config    *config.DatafeedConfig
+	config    *Config
 	dataChan  chan Data
 	errorChan chan error
 	duration  time.Duration

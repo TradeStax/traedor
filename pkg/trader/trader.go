@@ -22,7 +22,7 @@ type Trader struct {
 }
 
 func NewTrader(c *config.Config) *Trader {
-	ah := auth.NewAuthHelper(c)
+	ah := auth.NewAuthHelper(&c.AuthConfig)
 	dc := make(chan datafeed.Data, 1)
 	ec := make(chan error)
 	ic := make(chan strategy.Indicator, 1)

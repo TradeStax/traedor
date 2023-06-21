@@ -5,14 +5,14 @@ import (
 	"log"
 	"time"
 
-	"github.com/tradestax/traedor/internal/config"
+	"github.com/tradestax/traedor/pkg/broker/stop"
 	"github.com/tradestax/traedor/pkg/datafeed"
 )
 
 type FuturesBroker struct {
 	account      *Account
 	currentTrade *Trade
-	config       *config.BrokerConfig
+	config       *Config
 	currentPrice float64
 	currentTime  int64
 	stopAmount   float64
@@ -28,7 +28,7 @@ type FuturesBroker struct {
 	week         int
 }
 
-func NewFuturesBroker(c *config.BrokerConfig) IBroker {
+func NewFuturesBroker(c *Config) IBroker {
 	return &FuturesBroker{
 		account: &Account{
 			balance:          c.StartingBalance,
@@ -55,8 +55,14 @@ func (b *FuturesBroker) AddData(d datafeed.Data) {
 	if b.currentTrade != nil {
 		// update max values for trade
 		b.updateTradeValues(d)
-		if b.isStop() {
-			b.closePosition()
+		// if b.isStop() {
+		//	b.closePosition()
+		// }
+		for _, stop := range b.currentTrade.Stops {
+			if stop.Stop(b.currentPrice) {
+				b.closePosition()
+				break
+			}
 		}
 		// close all trades on Friday at 4:45pm
 		now := time.Unix(d.Date, 0)
@@ -110,9 +116,12 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 			b.account.balance -= fee
 			b.currentTrade = &t
 			b.currentTrade.Quantity = tradeQ
+			// set stops
+			b.currentTrade.Stops = []stop.IStop{stop.NewStop("breakeven")}
 			// slippage
 			b.currentTrade.Price = b.currentPrice + b.config.OpenSlippage
-			b.currentTrade.ProfitPrice = b.currentTrade.Price + (b.stopAmount * 10)
+			b.currentTrade.ProfitPrice = b.currentTrade.Price + (b.stopAmount * 2)
+			// b.currentTrade.ProfitPrice = b.currentTrade.Price + 1
 			//b.currentTrade.ProfitPrice = b.currentTrade.Price + (b.stopAmount)
 			b.currentTrade.StopPrice = b.currentTrade.Price - b.stopAmount
 			log.Printf("Updated Available Balance: %.2f\n", b.account.availableBalance)
@@ -132,9 +141,12 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 			b.account.balance -= fee
 			b.currentTrade = &t
 			b.currentTrade.Quantity = tradeQ
+			// set stops
+			b.currentTrade.Stops = []stop.IStop{stop.NewStop("breakeven")}
 			// slippage
 			b.currentTrade.Price = b.currentPrice - b.config.OpenSlippage
-			b.currentTrade.ProfitPrice = b.currentTrade.Price - (b.stopAmount * 10)
+			b.currentTrade.ProfitPrice = b.currentTrade.Price - (b.stopAmount * 2)
+			// b.currentTrade.ProfitPrice = b.currentTrade.Price - 1
 			//b.currentTrade.ProfitPrice = b.currentTrade.Price - (b.stopAmount)
 			b.currentTrade.StopPrice = b.currentTrade.Price + b.stopAmount
 			log.Printf("Updated Available Balance: %.2f\n", b.account.availableBalance)

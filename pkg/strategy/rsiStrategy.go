@@ -1,7 +1,6 @@
 package strategy
 
 import (
-	"github.com/tradestax/traedor/internal/config"
 	"github.com/tradestax/traedor/pkg/datafeed"
 
 	"github.com/markcheno/go-talib"
@@ -13,12 +12,12 @@ const (
 )
 
 type RsiStrategy struct {
-	config        config.StrategyConfig
+	config        *Config
 	dataCache     []datafeed.Data
 	indicatorChan chan Indicator
 }
 
-func NewRsiStrategy(c config.StrategyConfig, ic chan Indicator) IStrategy {
+func NewRsiStrategy(c *Config, ic chan Indicator) IStrategy {
 	return &RsiStrategy{
 		config:        c,
 		dataCache:     make([]datafeed.Data, 10),

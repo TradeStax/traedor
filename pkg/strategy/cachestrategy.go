@@ -2,31 +2,31 @@ package strategy
 
 import (
 	"encoding/csv"
-	"os"
 	"log"
+	"os"
 	"strconv"
-	"github.com/tradestax/traedor/internal/config"
+
 	"github.com/tradestax/traedor/pkg/datafeed"
 )
 
 type CacheStrategy struct {
-	config        config.StrategyConfig
+	config        *Config
 	indicatorChan chan Indicator
-	data datafeed.Data
-	writer *csv.Writer
+	data          datafeed.Data
+	writer        *csv.Writer
 }
 
-func NewCacheStrategy(c config.StrategyConfig, ic chan Indicator) IStrategy {
+func NewCacheStrategy(c *Config, ic chan Indicator) IStrategy {
 	file, err := os.Create("data.csv")
-    if err != nil {
-        log.Fatal(err)
-    }
-    // initialize csv writer
-    writer := csv.NewWriter(file)
+	if err != nil {
+		log.Fatal(err)
+	}
+	// initialize csv writer
+	writer := csv.NewWriter(file)
 	return &CacheStrategy{
 		config:        c,
 		indicatorChan: ic,
-		writer: writer,
+		writer:        writer,
 	}
 }
 
@@ -49,7 +49,7 @@ func (s *CacheStrategy) determineIndicator() {
 	closeVal := strconv.FormatFloat(s.data.Close, 'f', -1, 64)
 	volVal := strconv.FormatFloat(s.data.Volume, 'f', -1, 64)
 	// write data
-	data := []string{dateVal, openVal,highVal,lowVal,closeVal,volVal}
+	data := []string{dateVal, openVal, highVal, lowVal, closeVal, volVal}
 	s.writer.Write(data)
 	s.writer.Flush()
 	// send empty indicator

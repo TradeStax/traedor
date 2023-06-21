@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tradestax/traedor/internal/config"
 	"github.com/tradestax/traedor/pkg/datafeed"
 )
 
@@ -19,7 +18,7 @@ const (
 )
 
 type ScStrategy struct {
-	config         config.StrategyConfig
+	config         *Config
 	dataCache      []datafeed.Data
 	indicatorChan  chan Indicator
 	headers        map[string]int
@@ -41,7 +40,7 @@ type cross struct {
 	below bool
 }
 
-func NewScStrategy(c config.StrategyConfig, ic chan Indicator) IStrategy {
+func NewScStrategy(c *Config, ic chan Indicator) IStrategy {
 	f, err := os.Open(c.Params.DataPath)
 	if err != nil {
 		panic(fmt.Errorf("Failed to open datapath"))

@@ -3,11 +3,22 @@ package strategy
 import (
 	"fmt"
 	"log"
-
-	"github.com/tradestax/traedor/internal/config"
+	"time"
 )
 
-type stratBuilder func(config.StrategyConfig, chan Indicator) IStrategy
+type Config struct {
+	Type   string
+	Symbol string
+	Params Params
+}
+
+type Params struct {
+	DataPath  string
+	Values    []string
+	Timeframe time.Duration
+}
+
+type stratBuilder func(*Config, chan Indicator) IStrategy
 
 var (
 	baseStrategies = map[string]stratBuilder{
@@ -21,15 +32,15 @@ var (
 	customStrategies = map[string]stratBuilder{}
 )
 
-func NewStrategy(c []config.StrategyConfig, ic chan Indicator) IStrategy {
+func NewStrategy(c []Config, ic chan Indicator) IStrategy {
 	if len(c) == 1 {
 		if f, ok := baseStrategies[c[0].Type]; ok {
 			log.Printf("Creating %v strategy", c[0].Type)
-			return f(c[0], ic)
+			return f(&c[0], ic)
 		}
 		if f, ok := customStrategies[c[0].Type]; ok {
 			log.Printf("Creating %v strategy", c[0].Type)
-			return f(c[0], ic)
+			return f(&c[0], ic)
 		}
 		panic(fmt.Errorf("Unrecognized Strategy %v", c[0].Type))
 	} else if len(c) > 1 {

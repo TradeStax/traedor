@@ -1,7 +1,6 @@
 package strategy
 
 import (
-	"github.com/tradestax/traedor/internal/config"
 	"github.com/tradestax/traedor/pkg/datafeed"
 
 	"github.com/markcheno/go-talib"
@@ -16,12 +15,12 @@ const (
 )
 
 type MacdStrategy struct {
-	config        config.StrategyConfig
+	config        *Config
 	dataCache     []datafeed.Data
 	indicatorChan chan Indicator
 }
 
-func NewMacdStrategy(c config.StrategyConfig, ic chan Indicator) IStrategy {
+func NewMacdStrategy(c *Config, ic chan Indicator) IStrategy {
 	return &MacdStrategy{
 		config:        c,
 		dataCache:     make([]datafeed.Data, 10),

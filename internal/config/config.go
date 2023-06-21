@@ -1,9 +1,11 @@
 package config
 
 import (
-	"time"
-
 	"github.com/spf13/viper"
+	"github.com/tradestax/traedor/pkg/auth"
+	"github.com/tradestax/traedor/pkg/broker"
+	"github.com/tradestax/traedor/pkg/datafeed"
+	"github.com/tradestax/traedor/pkg/strategy"
 )
 
 const (
@@ -13,57 +15,10 @@ const (
 )
 
 type Config struct {
-	AuthConfig AuthConfig
-	Broker     BrokerConfig
-	Datafeeds  []DatafeedConfig
-	Strategy   []StrategyConfig
-}
-
-type AuthConfig struct {
-	AuthHelper  string
-	UserEnvVar  string
-	CallbackURL string
-}
-
-type BrokerConfig struct {
-	StartingBalance    float64
-	WeeklyWithdrawl    float64
-	Symbol             BrokerSymbol
-	Type               string
-	TrailingStopAmount float64
-	FeePerSide         float64
-	OpenSlippage       float64
-	CloseSlippage      float64
-}
-
-type BrokerSymbol struct {
-	Name       string
-	Margin     float64
-	PointPrice float64
-}
-
-type DatafeedConfig struct {
-	DataPath  string
-	Fields    string
-	Interval  string
-	Service   string
-	Symbol    string
-	Type      string
-	StartTime int64
-	EndTime   int64
-	Print     bool
-}
-
-type StrategyConfig struct {
-	Type   string
-	Symbol string
-	Params StrategyParams
-}
-
-type StrategyParams struct {
-	DataPath  string
-	Values    []string
-	Timeframe time.Duration
+	AuthConfig auth.Config
+	Broker     broker.Config
+	Datafeeds  []datafeed.Config
+	Strategy   []strategy.Config
 }
 
 func setDefaults(v *viper.Viper) {
