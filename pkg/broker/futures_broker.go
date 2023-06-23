@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/tradestax/traedor/pkg/broker/profit"
 	"github.com/tradestax/traedor/pkg/broker/stop"
 	"github.com/tradestax/traedor/pkg/datafeed"
 )
@@ -55,13 +56,18 @@ func (b *FuturesBroker) AddData(d datafeed.Data) {
 	if b.currentTrade != nil {
 		// update max values for trade
 		b.updateTradeValues(d)
-		// if b.isStop() {
-		//	b.closePosition()
-		// }
+		// check stops
 		for _, stop := range b.currentTrade.Stops {
 			if stop.Stop(b.currentPrice) {
 				b.closePosition()
-				break
+				return
+			}
+		}
+		// check profits
+		for _, profit := range b.currentTrade.Profits {
+			if profit.Profit(b.currentPrice) {
+				b.closePosition()
+				return
 			}
 		}
 		// close all trades on Friday at 4:45pm
@@ -70,6 +76,7 @@ func (b *FuturesBroker) AddData(d datafeed.Data) {
 			if now.Hour() >= 16 {
 				if now.Minute() >= 45 {
 					b.closePosition()
+					return
 				}
 			}
 		}
@@ -94,9 +101,11 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 			}
 		}
 	}
-	// q := max(1, (b.account.availableBalance / ((b.margin) + b.feePerSide)))
+	//q := max(1, (b.account.availableBalance / ((b.margin) + b.feePerSide)))
+	// q := max(1, (b.account.availableBalance / (250 * 20)))
 	// tradeQ := int(min(4, q))
-	tradeQ := 1
+	tradeQ := 2
+	t.Quantity = tradeQ
 	fee := float64(tradeQ) * b.feePerSide
 	switch t.Operation {
 	case Close:
@@ -116,6 +125,8 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 			b.account.balance -= fee
 			b.currentTrade = &t
 			b.currentTrade.Quantity = tradeQ
+			// slippage
+			b.currentTrade.Price = b.currentPrice + b.config.OpenSlippage
 			// set stops
 			tradeStops := make([]stop.IStop, len(b.config.Stops))
 			for i := 0; i < len(b.config.Stops); i++ {
@@ -124,12 +135,14 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 				tradeStops[i] = stop.NewStop(&b.config.Stops[i])
 			}
 			b.currentTrade.Stops = tradeStops
-			// slippage
-			b.currentTrade.Price = b.currentPrice + b.config.OpenSlippage
-			b.currentTrade.ProfitPrice = b.currentTrade.Price + (b.stopAmount * 2)
-			// b.currentTrade.ProfitPrice = b.currentTrade.Price + 1
-			//b.currentTrade.ProfitPrice = b.currentTrade.Price + (b.stopAmount)
-			b.currentTrade.StopPrice = b.currentTrade.Price - b.stopAmount
+			// set profits
+			tradeProfits := make([]profit.IProfit, len(b.config.Profits))
+			for i := 0; i < len(b.config.Profits); i++ {
+				b.config.Profits[i].Direction = Buy
+				b.config.Profits[i].FillPrice = b.currentTrade.Price
+				tradeProfits[i] = profit.NewProfit(&b.config.Profits[i])
+			}
+			b.currentTrade.Profits = tradeProfits
 			log.Printf("Updated Available Balance: %.2f\n", b.account.availableBalance)
 		}
 	case Sell:
@@ -147,6 +160,8 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 			b.account.balance -= fee
 			b.currentTrade = &t
 			b.currentTrade.Quantity = tradeQ
+			// slippage
+			b.currentTrade.Price = b.currentPrice - b.config.OpenSlippage
 			// set stops
 			tradeStops := make([]stop.IStop, len(b.config.Stops))
 			for i := 0; i < len(b.config.Stops); i++ {
@@ -155,12 +170,14 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 				tradeStops[i] = stop.NewStop(&b.config.Stops[i])
 			}
 			b.currentTrade.Stops = tradeStops
-			// slippage
-			b.currentTrade.Price = b.currentPrice - b.config.OpenSlippage
-			b.currentTrade.ProfitPrice = b.currentTrade.Price - (b.stopAmount * 2)
-			// b.currentTrade.ProfitPrice = b.currentTrade.Price - 1
-			//b.currentTrade.ProfitPrice = b.currentTrade.Price - (b.stopAmount)
-			b.currentTrade.StopPrice = b.currentTrade.Price + b.stopAmount
+			// set profits
+			tradeProfits := make([]profit.IProfit, len(b.config.Profits))
+			for i := 0; i < len(b.config.Profits); i++ {
+				b.config.Profits[i].Direction = Sell
+				b.config.Profits[i].FillPrice = b.currentTrade.Price
+				tradeProfits[i] = profit.NewProfit(&b.config.Profits[i])
+			}
+			b.currentTrade.Profits = tradeProfits
 			log.Printf("Updated Available Balance: %.2f\n", b.account.availableBalance)
 		}
 	default:
@@ -212,35 +229,6 @@ func (b *FuturesBroker) closePosition() {
 	log.Printf("Updated Balance: %.2f Available Balance: %.2f\n", b.account.balance, b.account.availableBalance)
 }
 
-func (b *FuturesBroker) isStop() bool {
-	if b.currentTrade.Operation == Buy {
-		// check for take profit
-		if b.currentPrice >= b.currentTrade.ProfitPrice {
-			return true
-		}
-		// check for trailing stop cross
-		if b.currentPrice <= b.currentTrade.StopPrice {
-			return true
-		}
-		// update trailing stop
-		b.currentTrade.StopPrice = max(b.currentTrade.StopPrice, b.currentPrice-b.stopAmount)
-	} else if b.currentTrade.Operation == Sell {
-		// check for take profit
-		if b.currentPrice <= b.currentTrade.ProfitPrice {
-			return true
-		}
-		// check for trailing stop cross
-		if b.currentPrice >= b.currentTrade.StopPrice {
-			return true
-		}
-		// update trailing stop
-		b.currentTrade.StopPrice = min(b.currentTrade.StopPrice, b.currentPrice+b.stopAmount)
-	} else {
-		log.Printf("Somehow called close on no op trade")
-	}
-	return false
-}
-
 func (b *FuturesBroker) updateTradeValues(d datafeed.Data) {
 	currDiff := d.Close - b.currentTrade.Price
 	if b.currentTrade.Operation == Sell {
@@ -256,7 +244,7 @@ func (b *FuturesBroker) updateTradeValues(d datafeed.Data) {
 }
 
 func (b *FuturesBroker) validTrade(t *Trade) bool {
-	if b.account.availableBalance-b.margin < 0 {
+	if b.account.availableBalance-(b.margin*float64(t.Quantity)) < 0 {
 		return false
 	}
 	return true

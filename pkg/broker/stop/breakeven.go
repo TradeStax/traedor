@@ -1,7 +1,5 @@
 package stop
 
-import "log"
-
 type BreakevenConfig struct {
 	Trigger float64
 	Offset  float64
@@ -26,7 +24,6 @@ func NewBreakevenStop(c *Config) IStop {
 		offset:       c.Breakeven.Offset,
 	}
 	bs.init()
-	log.Printf("BE Stop init'd %+v\n", *bs)
 	return bs
 }
 

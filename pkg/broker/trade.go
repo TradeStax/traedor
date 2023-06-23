@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/tradestax/traedor/pkg/broker/profit"
 	"github.com/tradestax/traedor/pkg/broker/stop"
 )
 
@@ -23,8 +24,7 @@ type Trade struct {
 	Price       float64
 	ClosePrice  float64
 	Stops       []stop.IStop
-	StopPrice   float64
-	ProfitPrice float64
+	Profits     []profit.IProfit
 	Time        int64
 	CloseTime   int64
 	Net         float64

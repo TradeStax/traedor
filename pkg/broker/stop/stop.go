@@ -12,6 +12,7 @@ type Config struct {
 	Direction int
 	FillPrice float64
 	Breakeven BreakevenConfig
+	Static    StaticConfig
 }
 
 type stopBuilder func(*Config) IStop
@@ -22,6 +23,7 @@ type IStop interface {
 
 var stops = map[string]stopBuilder{
 	"breakeven": NewBreakevenStop,
+	"static":    NewStaticStop,
 }
 
 func NewStop(c *Config) IStop {
