@@ -11,30 +11,49 @@ import (
 )
 
 type FuturesBroker struct {
-	account      *Account
-	currentTrade *Trade
-	config       *Config
-	currentPrice float64
-	currentTime  int64
-	stopAmount   float64
-	feePerSide   float64
-	wins         int
-	loses        int
-	cumWin       float64
-	cumLose      float64
-	trades       []*Trade
-	margin       float64
-	pointPrice   float64
-	output       string
-	week         int
+	account       *Account
+	blackoutTimes BlackoutTimes
+	currentTrade  *Trade
+	config        *Config
+	currentPrice  float64
+	currentTime   int64
+	stopAmount    float64
+	feePerSide    float64
+	wins          int
+	loses         int
+	cumWin        float64
+	cumLose       float64
+	trades        []*Trade
+	margin        float64
+	pointPrice    float64
+	output        string
+	week          int
 }
 
 func NewFuturesBroker(c *Config) IBroker {
+	// set blackout (no trade) times
+	tz, err := time.LoadLocation(c.BlackoutTimes.TimeZone)
+	if err != nil {
+		panic(fmt.Errorf("Failed to load location from config"))
+	}
+	startTime, err := time.ParseInLocation(timeLayout, c.BlackoutTimes.StartTime, tz)
+	if err != nil {
+		panic(fmt.Errorf("Failed to load blackout start time"))
+	}
+	endTime, err := time.ParseInLocation(timeLayout, c.BlackoutTimes.EndTime, tz)
+	if err != nil {
+		panic(fmt.Errorf("Failed to load blackout end time"))
+	}
 	return &FuturesBroker{
 		account: &Account{
 			balance:          c.StartingBalance,
 			availableBalance: c.StartingBalance,
 			weeklyWithdrawl:  c.WeeklyWithdrawl,
+		},
+		blackoutTimes: BlackoutTimes{
+			StartTime: startTime,
+			EndTime:   endTime,
+			TimeZone:  tz,
 		},
 		config:     c,
 		output:     "trades.csv",
@@ -70,15 +89,12 @@ func (b *FuturesBroker) AddData(d datafeed.Data) {
 				return
 			}
 		}
-		// close all trades on Friday at 4:45pm
+		// close all trades based on blackout period
 		now := time.Unix(d.Date, 0)
-		if now.Weekday() == time.Friday {
-			if now.Hour() >= 16 {
-				if now.Minute() >= 45 {
-					b.closePosition()
-					return
-				}
-			}
+		if isBlackout(now.In(b.blackoutTimes.TimeZone), b.blackoutTimes.StartTime, b.blackoutTimes.EndTime) {
+			b.closePosition()
+			log.Println("Broker closed trade due to blackout times")
+			return
 		}
 	}
 }
@@ -92,19 +108,15 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 		b.account.WeeklyWithdrawl()
 		b.week = week
 	}
-	// close all trades on Friday at 4:45pm
-	if tradeTime.Weekday() == time.Friday {
-		if tradeTime.Hour() >= 16 {
-			if tradeTime.Minute() >= 45 {
-				log.Println("Broker not entering trade after 4:45pm on Friday")
-				return nil
-			}
-		}
+	// Prevent entering trades during blackout period
+	if isBlackout(tradeTime.In(b.blackoutTimes.TimeZone), b.blackoutTimes.StartTime, b.blackoutTimes.EndTime) {
+		log.Println("Broker not entering trade due to blackout times")
+		return nil
 	}
 	//q := max(1, (b.account.availableBalance / ((b.margin) + b.feePerSide)))
 	// q := max(1, (b.account.availableBalance / (250 * 20)))
 	// tradeQ := int(min(4, q))
-	tradeQ := 2
+	tradeQ := b.config.TradeQuantity
 	t.Quantity = tradeQ
 	fee := float64(tradeQ) * b.feePerSide
 	switch t.Operation {
@@ -212,7 +224,7 @@ func (b *FuturesBroker) updateBalance() {
 	b.account.availableBalance -= fee
 	b.account.balance -= fee
 	b.currentTrade.Net = net
-	fmt.Printf("Close trade at %v\n", time.Unix(b.currentTime, 0))
+	log.Printf("Close trade at %v\n", time.Unix(b.currentTime, 0))
 }
 
 func (b *FuturesBroker) closePosition() {
