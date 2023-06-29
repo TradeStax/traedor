@@ -8,6 +8,7 @@ import (
 	"github.com/tradestax/traedor/pkg/broker"
 	"github.com/tradestax/traedor/pkg/datafeed"
 	"github.com/tradestax/traedor/pkg/strategy"
+	"github.com/tradestax/traedor/pkg/strategy/types"
 )
 
 type Trader struct {
@@ -16,8 +17,8 @@ type Trader struct {
 	data          []datafeed.IDatafeed
 	dataChan      chan datafeed.Data
 	errorChan     chan error
-	indicatorChan chan strategy.Indicator
-	strategy      strategy.IStrategy
+	indicatorChan chan types.Indicator
+	strategy      types.IStrategy
 	config        *config.Config
 }
 
@@ -25,7 +26,7 @@ func NewTrader(c *config.Config) *Trader {
 	ah := auth.NewAuthHelper(&c.AuthConfig)
 	dc := make(chan datafeed.Data, 1)
 	ec := make(chan error)
-	ic := make(chan strategy.Indicator, 1)
+	ic := make(chan types.Indicator, 1)
 	dfs := make([]datafeed.IDatafeed, len(c.Datafeeds))
 	for i, _ := range c.Datafeeds {
 		dfs[i] = datafeed.NewDatafeed(&c.Datafeeds[i], ah, dc, ec)
@@ -69,11 +70,11 @@ func (t *Trader) Run() {
 				Price:  newData.Close,
 			}
 			switch newInd.Direction {
-			case strategy.Close:
+			case types.Close:
 				trade.Operation = broker.Close
-			case strategy.Buy:
+			case types.Buy:
 				trade.Operation = broker.Buy
-			case strategy.Sell:
+			case types.Sell:
 				trade.Operation = broker.Sell
 			default:
 				trade.Operation = broker.None

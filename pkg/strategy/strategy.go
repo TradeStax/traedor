@@ -3,25 +3,12 @@ package strategy
 import (
 	"fmt"
 	"log"
-	"time"
+
+	"github.com/tradestax/traedor/pkg/strategy/types"
 )
 
-type Config struct {
-	Type   string
-	Symbol string
-	Params Params
-}
-
-type Params struct {
-	DataPath  string
-	Values    []string
-	Timeframe time.Duration
-}
-
-type stratBuilder func(*Config, chan Indicator) IStrategy
-
 var (
-	baseStrategies = map[string]stratBuilder{
+	baseStrategies = map[string]types.StratBuilder{
 		"SMA":   NewSmaStrategy,
 		"MACD":  NewMacdStrategy,
 		"RSI":   NewRsiStrategy,
@@ -29,10 +16,10 @@ var (
 		"Label": NewLabelStrategy,
 		"SC":    NewScStrategy,
 	}
-	customStrategies = map[string]stratBuilder{}
+	customStrategies = map[string]types.StratBuilder{}
 )
 
-func NewStrategy(c []Config, ic chan Indicator) IStrategy {
+func NewStrategy(c []types.Config, ic chan types.Indicator) types.IStrategy {
 	if len(c) == 1 {
 		if f, ok := baseStrategies[c[0].Type]; ok {
 			log.Printf("Creating %v strategy", c[0].Type)

@@ -5,7 +5,7 @@ import (
 	"github.com/tradestax/traedor/pkg/auth"
 	"github.com/tradestax/traedor/pkg/broker"
 	"github.com/tradestax/traedor/pkg/datafeed"
-	"github.com/tradestax/traedor/pkg/strategy"
+	"github.com/tradestax/traedor/pkg/strategy/types"
 )
 
 const (
@@ -18,7 +18,7 @@ type Config struct {
 	AuthConfig auth.Config
 	Broker     broker.Config
 	Datafeeds  []datafeed.Config
-	Strategy   []strategy.Config
+	Strategy   []types.Config
 }
 
 func setDefaults(v *viper.Viper) {

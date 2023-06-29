@@ -7,11 +7,12 @@ import (
 	"strconv"
 
 	"github.com/tradestax/traedor/pkg/datafeed"
+	"github.com/tradestax/traedor/pkg/strategy/types"
 )
 
 type LabelStrategy struct {
-	config        *Config
-	indicatorChan chan Indicator
+	config        *types.Config
+	indicatorChan chan types.Indicator
 	data          datafeed.Data
 	writer        *csv.Writer
 	dataCache     []labeledData
@@ -25,7 +26,7 @@ type labeledData struct {
 	label     string
 }
 
-func NewLabelStrategy(c *Config, ic chan Indicator) IStrategy {
+func NewLabelStrategy(c *types.Config, ic chan types.Indicator) types.IStrategy {
 	file, err := os.Create("data.csv")
 	if err != nil {
 		log.Fatal(err)
@@ -50,7 +51,7 @@ func (s *LabelStrategy) AddData(data datafeed.Data) error {
 	return nil
 }
 
-func (s *LabelStrategy) GetIndicatorFeed() chan Indicator {
+func (s *LabelStrategy) GetIndicatorFeed() chan types.Indicator {
 	return s.indicatorChan
 }
 
@@ -64,7 +65,7 @@ func (s *LabelStrategy) determineIndicator() {
 	s.writer.Write(data)
 	s.writer.Flush()
 	// send empty indicator
-	s.indicatorChan <- Indicator{
-		Direction: None,
+	s.indicatorChan <- types.Indicator{
+		Direction: types.None,
 	}
 }

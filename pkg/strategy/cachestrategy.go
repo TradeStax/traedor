@@ -7,16 +7,17 @@ import (
 	"strconv"
 
 	"github.com/tradestax/traedor/pkg/datafeed"
+	"github.com/tradestax/traedor/pkg/strategy/types"
 )
 
 type CacheStrategy struct {
-	config        *Config
-	indicatorChan chan Indicator
+	config        *types.Config
+	indicatorChan chan types.Indicator
 	data          datafeed.Data
 	writer        *csv.Writer
 }
 
-func NewCacheStrategy(c *Config, ic chan Indicator) IStrategy {
+func NewCacheStrategy(c *types.Config, ic chan types.Indicator) types.IStrategy {
 	file, err := os.Create("data.csv")
 	if err != nil {
 		log.Fatal(err)
@@ -36,7 +37,7 @@ func (s *CacheStrategy) AddData(data datafeed.Data) error {
 	return nil
 }
 
-func (s *CacheStrategy) GetIndicatorFeed() chan Indicator {
+func (s *CacheStrategy) GetIndicatorFeed() chan types.Indicator {
 	return s.indicatorChan
 }
 
@@ -53,7 +54,7 @@ func (s *CacheStrategy) determineIndicator() {
 	s.writer.Write(data)
 	s.writer.Flush()
 	// send empty indicator
-	s.indicatorChan <- Indicator{
-		Direction: None,
+	s.indicatorChan <- types.Indicator{
+		Direction: types.None,
 	}
 }
