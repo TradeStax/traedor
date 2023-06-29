@@ -5,6 +5,9 @@ import (
 	"log"
 	"os"
 	"strings"
+
+	"github.com/tradestax/traedor/pkg/broker/profit"
+	"github.com/tradestax/traedor/pkg/broker/stop"
 )
 
 const (
@@ -20,8 +23,8 @@ type Trade struct {
 	Quantity    int
 	Price       float64
 	ClosePrice  float64
-	StopPrice   float64
-	ProfitPrice float64
+	Stops       []stop.IStop
+	Profits     []profit.IProfit
 	Time        int64
 	CloseTime   int64
 	Net         float64

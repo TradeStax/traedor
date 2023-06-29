@@ -8,14 +8,13 @@ import (
 	"sync"
 
 	"github.com/tradestax/go-tdameritrade"
-	"github.com/tradestax/traedor/internal/config"
 	"golang.org/x/oauth2"
 )
 
 type TDAAuthHelper struct {
 	authenticator   *tdameritrade.Authenticator
 	authChan        chan error
-	config          config.AuthConfig
+	config          *Config
 	user            string
 	token           string
 	StreamingClient *tdameritrade.StreamingClient
@@ -28,14 +27,14 @@ const (
 	serverAddress = ":8081"
 )
 
-func NewTDAAuthHelper(c *config.Config) *TDAAuthHelper {
-	clientID := os.Getenv(c.AuthConfig.UserEnvVar)
+func NewTDAAuthHelper(c *Config) *TDAAuthHelper {
+	clientID := os.Getenv(c.UserEnvVar)
 	if clientID == "" {
 		log.Fatalf("Unauthorized: No client ID present")
 	}
 	return &TDAAuthHelper{
 		authChan: make(chan error, 1),
-		config:   c.AuthConfig,
+		config:   c,
 		user:     clientID,
 	}
 }

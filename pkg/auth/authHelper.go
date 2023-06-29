@@ -2,13 +2,17 @@ package auth
 
 import (
 	"log"
-
-	"github.com/tradestax/traedor/internal/config"
 )
 
-func NewAuthHelper(c *config.Config) IAuthHelper {
+type Config struct {
+	AuthHelper  string
+	UserEnvVar  string
+	CallbackURL string
+}
+
+func NewAuthHelper(c *Config) IAuthHelper {
 	var a IAuthHelper
-	switch c.AuthConfig.AuthHelper {
+	switch c.AuthHelper {
 	case "TDA":
 		a = NewTDAAuthHelper(c)
 	default:

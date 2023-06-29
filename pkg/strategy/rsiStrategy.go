@@ -1,8 +1,8 @@
 package strategy
 
 import (
-	"github.com/tradestax/traedor/internal/config"
 	"github.com/tradestax/traedor/pkg/datafeed"
+	"github.com/tradestax/traedor/pkg/strategy/types"
 
 	"github.com/markcheno/go-talib"
 )
@@ -13,12 +13,12 @@ const (
 )
 
 type RsiStrategy struct {
-	config        config.StrategyConfig
+	config        *types.Config
 	dataCache     []datafeed.Data
-	indicatorChan chan Indicator
+	indicatorChan chan types.Indicator
 }
 
-func NewRsiStrategy(c config.StrategyConfig, ic chan Indicator) IStrategy {
+func NewRsiStrategy(c *types.Config, ic chan types.Indicator) types.IStrategy {
 	return &RsiStrategy{
 		config:        c,
 		dataCache:     make([]datafeed.Data, 10),
@@ -35,14 +35,14 @@ func (s *RsiStrategy) AddData(data datafeed.Data) error {
 	return nil
 }
 
-func (s *RsiStrategy) GetIndicatorFeed() chan Indicator {
+func (s *RsiStrategy) GetIndicatorFeed() chan types.Indicator {
 	return s.indicatorChan
 }
 
 func (s *RsiStrategy) determineIndicator() {
-	var ind Indicator
+	var ind types.Indicator
 	if s.dataCache[0].Volume == 0 {
-		ind.Direction = None
+		ind.Direction = types.None
 		s.indicatorChan <- ind
 		return
 	}
@@ -50,15 +50,15 @@ func (s *RsiStrategy) determineIndicator() {
 	latestRsi := rsiVals[len(rsiVals)-1]
 	if latestRsi > overboughtVal || latestRsi < oversoldVal {
 		// overbought or oversold, close
-		ind.Direction = Close
+		ind.Direction = types.Close
 		ind.Price = s.dataCache[9].Close
 	} else if rsiIncreasing(rsiVals) {
 		// increasing, buy
-		ind.Direction = Buy
+		ind.Direction = types.Buy
 		ind.Price = s.dataCache[9].Close
 	} else {
 		// decreasing, sell
-		ind.Direction = Sell
+		ind.Direction = types.Sell
 		ind.Price = s.dataCache[9].Close
 	}
 	s.indicatorChan <- ind

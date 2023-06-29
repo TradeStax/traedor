@@ -1,8 +1,8 @@
 package strategy
 
 import (
-	"github.com/tradestax/traedor/internal/config"
 	"github.com/tradestax/traedor/pkg/datafeed"
+	"github.com/tradestax/traedor/pkg/strategy/types"
 
 	"github.com/markcheno/go-talib"
 )
@@ -16,12 +16,12 @@ const (
 )
 
 type MacdStrategy struct {
-	config        config.StrategyConfig
+	config        *types.Config
 	dataCache     []datafeed.Data
-	indicatorChan chan Indicator
+	indicatorChan chan types.Indicator
 }
 
-func NewMacdStrategy(c config.StrategyConfig, ic chan Indicator) IStrategy {
+func NewMacdStrategy(c *types.Config, ic chan types.Indicator) types.IStrategy {
 	return &MacdStrategy{
 		config:        c,
 		dataCache:     make([]datafeed.Data, 10),
@@ -38,14 +38,14 @@ func (s *MacdStrategy) AddData(data datafeed.Data) error {
 	return nil
 }
 
-func (s *MacdStrategy) GetIndicatorFeed() chan Indicator {
+func (s *MacdStrategy) GetIndicatorFeed() chan types.Indicator {
 	return s.indicatorChan
 }
 
 func (s *MacdStrategy) determineIndicator() {
-	var ind Indicator
+	var ind types.Indicator
 	if s.dataCache[0].Volume == 0 {
-		ind.Direction = None
+		ind.Direction = types.None
 		s.indicatorChan <- ind
 		return
 	}
@@ -53,16 +53,16 @@ func (s *MacdStrategy) determineIndicator() {
 	latestMacd := macdVals[len(macdVals)-1]
 	if latestMacd > macdOverboughtVal || latestMacd < macdOversoldVal {
 		// overbought or oversold, close
-		ind.Direction = Close
+		ind.Direction = types.Close
 		ind.Price = s.dataCache[9].Close
 		ind.Time = s.dataCache[9].Date
 	} else if macdIncreasing(macdVals) {
 		// increasing, buy
-		ind.Direction = Buy
+		ind.Direction = types.Buy
 		ind.Price = s.dataCache[9].Close
 	} else {
 		// decreasing, sell
-		ind.Direction = Sell
+		ind.Direction = types.Sell
 		ind.Price = s.dataCache[9].Close
 	}
 	s.indicatorChan <- ind

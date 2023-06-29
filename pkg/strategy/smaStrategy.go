@@ -1,17 +1,17 @@
 package strategy
 
 import (
-	"github.com/tradestax/traedor/internal/config"
 	"github.com/tradestax/traedor/pkg/datafeed"
+	"github.com/tradestax/traedor/pkg/strategy/types"
 )
 
 type SmaStrategy struct {
-	config        config.StrategyConfig
+	config        *types.Config
 	dataCache     []datafeed.Data
-	indicatorChan chan Indicator
+	indicatorChan chan types.Indicator
 }
 
-func NewSmaStrategy(c config.StrategyConfig, ic chan Indicator) IStrategy {
+func NewSmaStrategy(c *types.Config, ic chan types.Indicator) types.IStrategy {
 	return &SmaStrategy{
 		config:        c,
 		dataCache:     make([]datafeed.Data, 10),
@@ -28,26 +28,26 @@ func (s *SmaStrategy) AddData(data datafeed.Data) error {
 	return nil
 }
 
-func (s *SmaStrategy) GetIndicatorFeed() chan Indicator {
+func (s *SmaStrategy) GetIndicatorFeed() chan types.Indicator {
 	return s.indicatorChan
 }
 
 func (s *SmaStrategy) determineIndicator() {
-	var ind Indicator
+	var ind types.Indicator
 	if s.dataCache[0].Volume == 0 {
-		ind.Direction = None
+		ind.Direction = types.None
 		s.indicatorChan <- ind
 		return
 	}
 	diff := s.dataCache[9].Close - sma(s.dataCache)
 	if diff > -0.1 && diff < 0.1 {
-		ind.Direction = Close
+		ind.Direction = types.Close
 		ind.Price = s.dataCache[9].Close
 	} else if diff >= 0.1 {
-		ind.Direction = Buy
+		ind.Direction = types.Buy
 		ind.Price = s.dataCache[9].Close
 	} else {
-		ind.Direction = Sell
+		ind.Direction = types.Sell
 		ind.Price = s.dataCache[9].Close
 	}
 	s.indicatorChan <- ind

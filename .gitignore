@@ -23,6 +23,7 @@
 
 # Ignore custom files
 **/*_custom.go
+**/custom
 
 # Ignore data files
 data/

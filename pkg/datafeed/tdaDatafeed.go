@@ -7,13 +7,12 @@ import (
 	"sort"
 
 	"github.com/tradestax/go-tdameritrade"
-	"github.com/tradestax/traedor/internal/config"
 	"github.com/tradestax/traedor/pkg/auth"
 )
 
 type TDADatafeed struct {
 	authHelper *auth.TDAAuthHelper
-	config     *config.DatafeedConfig
+	config     *Config
 	dataChan   chan Data
 	errorChan  chan error
 }
@@ -95,7 +94,7 @@ func (d historicalData) Swap(i, j int) {
 	d[i], d[j] = d[j], d[i]
 }
 
-func NewTDADatafeed(c *config.DatafeedConfig, ah auth.IAuthHelper, dc chan Data, ec chan error) *TDADatafeed {
+func NewTDADatafeed(c *Config, ah auth.IAuthHelper, dc chan Data, ec chan error) *TDADatafeed {
 	authHelper, ok := ah.(*auth.TDAAuthHelper)
 	if !ok {
 		log.Fatalln("Failed to convert IAuthHelper to TDAAuthHelper")
