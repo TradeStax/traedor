@@ -13,6 +13,8 @@ type Datafeed struct {
 	duration  time.Duration
 	startTime int64
 	endTime   int64
+	prev      float64
+	skipped   int64
 }
 
 const testDataMax = 100

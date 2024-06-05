@@ -30,10 +30,11 @@ type Trade struct {
 	Net         float64
 	MaxDrawdown float64
 	MaxProfit   float64
+	Stopped     bool
 }
 
 func (t *Trade) String() string {
-	values := make([]string, 10)
+	values := make([]string, 11)
 	values[0] = t.Symbol
 	if t.Operation == Buy {
 		values[1] = "Buy"
@@ -50,11 +51,12 @@ func (t *Trade) String() string {
 	values[7] = fmt.Sprintf("%.02f", t.Net)
 	values[8] = fmt.Sprintf("%.02f", t.MaxDrawdown)
 	values[9] = fmt.Sprintf("%.02f", t.MaxProfit)
+	values[10] = fmt.Sprintf("%v", t.Stopped)
 	return strings.Join(values, ",")
 }
 
 func Header() string {
-	values := make([]string, 10)
+	values := make([]string, 11)
 	values[0] = "Symbol"
 	values[1] = "Operation"
 	values[2] = "Quantity"
@@ -65,6 +67,7 @@ func Header() string {
 	values[7] = "Net"
 	values[8] = "Max Drawdown"
 	values[9] = "Max Profit"
+	values[10] = "Stopped"
 	return strings.Join(values, ",")
 }
 

@@ -23,6 +23,15 @@ func (d *Datafeed) scDatafeed(duration time.Duration) {
 	}
 	defer f.Close()
 	csvReader := csv.NewReader(f)
+	headerRow, err := csvReader.Read()
+	if err != nil {
+		panic(err)
+	}
+	headers := make(map[string]int, len(headerRow))
+	for i, v := range headerRow {
+		v = strings.Trim(v, " ")
+		headers[v] = i
+	}
 	var rData Data
 	i := 0
 	for {
@@ -34,7 +43,7 @@ func (d *Datafeed) scDatafeed(duration time.Duration) {
 		if err != nil {
 			panic(err)
 		}
-		rData, err = scRowToData(record)
+		rData, err = scRowToData(headers, record)
 		if err != nil {
 			if i == 0 {
 				i++
@@ -54,6 +63,11 @@ func (d *Datafeed) scDatafeed(duration time.Duration) {
 			// skip records past end time
 			break
 		}
+		if d.config.CompressRecords && d.prev == rData.Close {
+			d.skipped++
+			continue
+		}
+		d.prev = rData.Close
 		d.dataChan <- rData
 		time.Sleep(duration)
 	}
@@ -61,10 +75,11 @@ func (d *Datafeed) scDatafeed(duration time.Duration) {
 	log.Printf("Start Time: %s\n", startDate)
 	endDate := time.Unix(rData.Date, 0)
 	log.Printf("End Time: %s\n", endDate)
+	log.Printf("Skipped %d records\n", d.skipped)
 	d.errorChan <- fmt.Errorf("Test Completed")
 }
 
-func scRowToData(r []string) (Data, error) {
+func scRowToData(headers map[string]int, r []string) (Data, error) {
 	var d Data
 	t, err := time.Parse(scDateLayout, r[0]+r[1])
 	//time, err := time.Parse(scDateLayout, r[0])
@@ -75,24 +90,36 @@ func scRowToData(r []string) (Data, error) {
 		}
 	}
 	d.Date = t.Unix()
-	for i, v := range r {
-		if i < 2 {
-			continue
-		}
-		v := strings.Trim(v, " ")
-		value, err := strconv.ParseFloat(v, 64)
-		value = value / 100
-		if err != nil {
-			return d, err
-		}
-		switch i {
-		case 3:
-			d.Close = value
-		case 6:
-			d.Volume = value
-			//default:
-			//return d, fmt.Errorf("Unknown index")
-		}
+	closeValue, err := strconv.ParseFloat(strings.Trim(r[headers["Last"]], " "), 64)
+	if err != nil {
+		return d, err
 	}
+	d.Close = closeValue / 100
+	volValue, err := strconv.ParseFloat(strings.Trim(r[headers["NumberOfTrades"]], " "), 64)
+	if err != nil {
+		return d, err
+	}
+	d.Volume = volValue
+	/*
+		for i, v := range r {
+			if i < 2 {
+				continue
+			}
+			v := strings.Trim(v, " ")
+			value, err := strconv.ParseFloat(v, 64)
+			value = value / 100
+			if err != nil {
+				return d, err
+			}
+			switch i {
+			case 3:
+				d.Close = value
+			case 6:
+				d.Volume = value
+				//default:
+				//return d, fmt.Errorf("Unknown index")
+			}
+		}
+	*/
 	return d, nil
 }

@@ -8,15 +8,16 @@ import (
 )
 
 type Config struct {
-	DataPath  string
-	Fields    string
-	Interval  string
-	Service   string
-	Symbol    string
-	Type      string
-	StartTime int64
-	EndTime   int64
-	Print     bool
+	DataPath        string
+	Fields          string
+	Interval        string
+	Service         string
+	Symbol          string
+	Type            string
+	StartTime       int64
+	EndTime         int64
+	Print           bool
+	CompressRecords bool
 }
 
 func NewDatafeed(c *Config, ah auth.IAuthHelper, dc chan Data, ec chan error) IDatafeed {
@@ -48,5 +49,7 @@ func NewLocalDatafeed(c *Config, dc chan Data, ec chan error) *Datafeed {
 		duration:  duration,
 		startTime: c.StartTime,
 		endTime:   c.EndTime,
+		prev:      0,
+		skipped:   0,
 	}
 }

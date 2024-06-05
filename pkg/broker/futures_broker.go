@@ -28,6 +28,7 @@ type FuturesBroker struct {
 	pointPrice    float64
 	output        string
 	week          int
+	stopped       bool
 }
 
 func NewFuturesBroker(c *Config) IBroker {
@@ -75,9 +76,14 @@ func (b *FuturesBroker) AddData(d datafeed.Data) {
 	if b.currentTrade != nil {
 		// update max values for trade
 		b.updateTradeValues(d)
+		// check for max dawdown
+		if (b.account.balance/2)-b.currentTrade.MaxDrawdown <= 0 {
+			panic(fmt.Errorf("Account balance below 0"))
+		}
 		// check stops
 		for _, stop := range b.currentTrade.Stops {
 			if stop.Stop(b.currentPrice) {
+				b.currentTrade.Stopped = true
 				b.closePosition()
 				return
 			}
@@ -110,13 +116,25 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 	}
 	// Prevent entering trades during blackout period
 	if isBlackout(tradeTime.In(b.blackoutTimes.TimeZone), b.blackoutTimes.StartTime, b.blackoutTimes.EndTime) {
-		log.Println("Broker not entering trade due to blackout times")
+		// log.Println("Broker not entering trade due to blackout times")
 		return nil
 	}
-	//q := max(1, (b.account.availableBalance / ((b.margin) + b.feePerSide)))
-	// q := max(1, (b.account.availableBalance / (250 * 20)))
-	// tradeQ := int(min(4, q))
-	tradeQ := b.config.TradeQuantity
+	// Prevent entering more than 1 trade in the same direction per 5min bar
+	// TODO: Make bar time configurable
+	if b.config.OneTradePerBar && b.currentTrade != nil && len(b.trades) > 0 {
+		prevTrade := b.trades[len(b.trades)-1]
+		prevTradeTime := time.Unix(prevTrade.Time, 0)
+		if tradeTime.Sub(prevTradeTime) < b.config.BarDuration {
+			return nil
+		}
+	}
+	tradeQ := 0
+	if b.config.AutoScalePositionSize {
+		q := max(1, (b.account.availableBalance / (250 * 50)))
+		tradeQ = int(min(float64(b.config.MaxTradeQuantity), q))
+	} else {
+		tradeQ = b.config.MaxTradeQuantity
+	}
 	t.Quantity = tradeQ
 	fee := float64(tradeQ) * b.feePerSide
 	switch t.Operation {
@@ -129,9 +147,10 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 		}
 		if b.currentTrade == nil {
 			if !b.validTrade(&t) {
-				return fmt.Errorf("Failed to create Buy: Insufficient account balance")
+				// return fmt.Errorf("Failed to create Buy: Insufficient account balance")
+				return nil
 			}
-			log.Printf("Broker Create Buy: Symbol: %v Price: %.2f Quantity: %d\n", t.Symbol, b.currentPrice, tradeQ)
+			log.Printf("Broker Create Buy at %v : Symbol: %v Price: %.2f Quantity: %d\n", time.Unix(b.currentTime, 0), t.Symbol, b.currentPrice, tradeQ)
 			b.account.availableBalance -= (float64(tradeQ) * b.margin)
 			b.account.availableBalance -= fee
 			b.account.balance -= fee
@@ -164,9 +183,10 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 		}
 		if b.currentTrade == nil {
 			if !b.validTrade(&t) {
-				return fmt.Errorf("Failed to create Sell: Insufficient account balance")
+				// return fmt.Errorf("Failed to create Sell: Insufficient account balance")
+				return nil
 			}
-			log.Printf("Broker Create Sell: Symbol %v Price: %.2f Quantity: %d\n", t.Symbol, b.currentPrice, tradeQ)
+			log.Printf("Broker Create Sell at %v: Symbol %v Price: %.2f Quantity: %d\n", time.Unix(b.currentTime, 0), t.Symbol, b.currentPrice, tradeQ)
 			b.account.availableBalance -= (float64(tradeQ) * b.margin)
 			b.account.availableBalance -= fee
 			b.account.balance -= fee
@@ -205,10 +225,11 @@ func (b *FuturesBroker) updateBalance() {
 	fee := float64(b.currentTrade.Quantity) * b.feePerSide
 	switch b.currentTrade.Operation {
 	case Buy:
-		net = (b.currentPrice - b.currentTrade.Price) * multiplier
+		net = ((b.currentPrice - b.config.OpenSlippage) - b.currentTrade.Price) * multiplier
 	case Sell:
-		net = (b.currentTrade.Price - b.currentPrice) * multiplier
+		net = (b.currentTrade.Price - (b.currentPrice + b.config.OpenSlippage)) * multiplier
 	}
+	net -= fee
 	if net > 0 {
 		b.wins++
 		b.cumWin += net
@@ -221,10 +242,10 @@ func (b *FuturesBroker) updateBalance() {
 	b.currentTrade.MaxDrawdown = b.currentTrade.MaxDrawdown * multiplier
 	b.account.balance += net
 	b.account.availableBalance += ((b.margin * float64(b.currentTrade.Quantity)) + net)
-	b.account.availableBalance -= fee
-	b.account.balance -= fee
+	// b.account.availableBalance -= fee
+	// b.account.balance -= fee
 	b.currentTrade.Net = net
-	log.Printf("Close trade at %v\n", time.Unix(b.currentTime, 0))
+	// log.Printf("Close trade at %v. Net: $%.02f\n", time.Unix(b.currentTime, 0), net)
 }
 
 func (b *FuturesBroker) closePosition() {
@@ -232,10 +253,15 @@ func (b *FuturesBroker) closePosition() {
 		log.Printf("Close called with no open position")
 		return
 	}
-	log.Printf("Broker Close Trade: Symbol: %v Price: %.2f Quantity: %d\n", b.currentTrade.Symbol, b.currentPrice, b.currentTrade.Quantity)
 	b.currentTrade.CloseTime = b.currentTime
 	b.currentTrade.ClosePrice = b.currentPrice
 	b.updateBalance()
+	log.Printf("Broker Close Trade at %v: Price: %.2f Quantity: %d Net: %.02f Stopped: %v\n",
+		time.Unix(b.currentTime, 0),
+		b.currentPrice,
+		b.currentTrade.Quantity,
+		b.currentTrade.Net,
+		b.currentTrade.Stopped)
 	b.trades = append(b.trades, b.currentTrade)
 	b.currentTrade = nil
 	log.Printf("Updated Balance: %.2f Available Balance: %.2f\n", b.account.balance, b.account.availableBalance)
@@ -259,6 +285,16 @@ func (b *FuturesBroker) validTrade(t *Trade) bool {
 	if b.account.availableBalance-(b.margin*float64(t.Quantity)) < 0 {
 		return false
 	}
+	// check for re-enter after stop
+	if !b.config.AllowReEnterAfterStop {
+		lastTradeIndex := len(b.trades) - 1
+		if lastTradeIndex >= 0 {
+			lastTrade := b.trades[lastTradeIndex]
+			if lastTrade.Operation == t.Operation && lastTrade.Stopped {
+				return false
+			}
+		}
+	}
 	return true
 }
 
@@ -268,6 +304,7 @@ func (b *FuturesBroker) Summary() {
 	log.Printf("Cumulative win amount: $%v\n", b.cumWin)
 	log.Printf("Number of loses: %v\n", b.loses)
 	log.Printf("Cumulative lose amount: $%v\n", b.cumLose)
+	log.Printf("Profit Factor: %.02f\n", b.cumWin/(b.cumLose*-1))
 	log.Printf("Number of trades: %v\n", len(b.trades))
 	log.Printf("Net profit: $%v\n", (b.cumWin + b.cumLose))
 	log.Printf("Net profit percentage: %.02f%%\n", ((b.cumWin+b.cumLose)/b.cumWin)*100)

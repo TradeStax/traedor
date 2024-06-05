@@ -1,6 +1,8 @@
 package strategy
 
 import (
+	"time"
+
 	"github.com/tradestax/traedor/pkg/datafeed"
 	"github.com/tradestax/traedor/pkg/strategy/types"
 
@@ -14,23 +16,37 @@ const (
 
 type RsiStrategy struct {
 	config        *types.Config
-	dataCache     []datafeed.Data
+	dataCache     []float64
 	indicatorChan chan types.Indicator
+	prevCloseTime time.Time
+	currIndex     int
 }
 
 func NewRsiStrategy(c *types.Config, ic chan types.Indicator) types.IStrategy {
 	return &RsiStrategy{
 		config:        c,
-		dataCache:     make([]datafeed.Data, 10),
+		dataCache:     make([]float64, 10),
 		indicatorChan: ic,
+		prevCloseTime: time.Unix(0, 0),
+		currIndex:     -1,
 	}
 }
 
 func (s *RsiStrategy) AddData(data datafeed.Data) error {
-	for i := 0; i < len(s.dataCache)-1; i++ {
-		s.dataCache[i] = s.dataCache[i+1]
+	currCloseTime := time.Unix(data.Date, 0)
+	if s.prevCloseTime.Year() > 2000 {
+		currM := currCloseTime.Minute()
+		prevM := s.prevCloseTime.Minute()
+		// aggregate 5 min close array
+		if (currM%5 == 0) && (prevM%5 != 0) && (s.currIndex != currM) {
+			s.currIndex = currM
+			for i := 0; i < 9; i++ {
+				s.dataCache[i] = s.dataCache[i+1]
+			}
+		}
 	}
-	s.dataCache[9] = data
+	s.prevCloseTime = currCloseTime
+	s.dataCache[9] = data.Close
 	s.determineIndicator()
 	return nil
 }
@@ -40,36 +56,25 @@ func (s *RsiStrategy) GetIndicatorFeed() chan types.Indicator {
 }
 
 func (s *RsiStrategy) determineIndicator() {
-	var ind types.Indicator
-	if s.dataCache[0].Volume == 0 {
-		ind.Direction = types.None
+	ind := types.Indicator{
+		Price:     s.dataCache[9],
+		Direction: types.None,
+	}
+	// make sure the cache is filled before making decisions on incomplete data
+	if s.dataCache[0] == float64(0) {
 		s.indicatorChan <- ind
 		return
 	}
-	rsiVals := rsi(s.dataCache)
+	rsiVals := talib.Rsi(s.dataCache, 2)
 	latestRsi := rsiVals[len(rsiVals)-1]
-	if latestRsi > overboughtVal || latestRsi < oversoldVal {
-		// overbought or oversold, close
-		ind.Direction = types.Close
-		ind.Price = s.dataCache[9].Close
-	} else if rsiIncreasing(rsiVals) {
-		// increasing, buy
-		ind.Direction = types.Buy
-		ind.Price = s.dataCache[9].Close
-	} else {
-		// decreasing, sell
+	rsiInc := rsiIncreasing(rsiVals)
+	ind.Price = s.dataCache[9]
+	if latestRsi > overboughtVal || (latestRsi > oversoldVal && !rsiInc) {
 		ind.Direction = types.Sell
-		ind.Price = s.dataCache[9].Close
+	} else if latestRsi < oversoldVal || (latestRsi < overboughtVal && rsiInc) {
+		ind.Direction = types.Buy
 	}
 	s.indicatorChan <- ind
-}
-
-func rsi(data []datafeed.Data) []float64 {
-	closePrice := make([]float64, len(data))
-	for i, d := range data {
-		closePrice[i] = d.Close
-	}
-	return talib.Rsi(closePrice, 2)
 }
 
 func rsiIncreasing(rsiVals []float64) bool {

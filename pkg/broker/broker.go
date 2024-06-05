@@ -10,18 +10,22 @@ import (
 )
 
 type Config struct {
-	StartingBalance    float64
-	WeeklyWithdrawl    float64
-	BlackoutTimes      BlackoutTimesStrings
-	Symbol             Symbol
-	Stops              []stop.Config
-	Profits            []profit.Config
-	TradeQuantity      int
-	Type               string
-	TrailingStopAmount float64
-	FeePerSide         float64
-	OpenSlippage       float64
-	CloseSlippage      float64
+	StartingBalance       float64
+	WeeklyWithdrawl       float64
+	AllowReEnterAfterStop bool
+	OneTradePerBar        bool
+	BlackoutTimes         BlackoutTimesStrings
+	Symbol                Symbol
+	Stops                 []stop.Config
+	Profits               []profit.Config
+	AutoScalePositionSize bool
+	MaxTradeQuantity      int
+	Type                  string
+	TrailingStopAmount    float64
+	FeePerSide            float64
+	OpenSlippage          float64
+	CloseSlippage         float64
+	BarDuration           time.Duration
 }
 
 type BlackoutTimesStrings struct {

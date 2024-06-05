@@ -10,6 +10,11 @@ import (
 	"github.com/tradestax/traedor/pkg/strategy/types"
 )
 
+const (
+	profit = 10
+	loss   = -5
+)
+
 type LabelStrategy struct {
 	config        *types.Config
 	indicatorChan chan types.Indicator
@@ -21,9 +26,37 @@ type LabelStrategy struct {
 type labeledData struct {
 	timestamp int64
 	price     float64
-	upVar     float64
-	downVar   float64
+	long      *trade
+	short     *trade
 	label     string
+}
+
+type trade struct {
+	open      float64
+	loss      float64
+	profit    float64
+	direction int
+	/*
+		from types package
+		None  = 0
+		Close = 1
+		Buy   = 2
+		Sell  = 3
+	*/
+}
+
+func (t *trade) update(p float64) {
+	if t.direction == types.Buy {
+		t.loss = min(t.loss, (p - t.open))
+		t.profit = max(t.profit, (p - t.open))
+	} else {
+		t.loss = min(t.loss, (t.open - p))
+		t.profit = max(t.profit, (t.open - p))
+	}
+}
+
+func (t *trade) complete() bool {
+	return t.profit >= profit || t.loss <= loss
 }
 
 func NewLabelStrategy(c *types.Config, ic chan types.Indicator) types.IStrategy {
@@ -47,6 +80,19 @@ func NewLabelStrategy(c *types.Config, ic chan types.Indicator) types.IStrategy 
 
 func (s *LabelStrategy) AddData(data datafeed.Data) error {
 	s.data = data
+	s.dataCache = append(s.dataCache, labeledData{
+		timestamp: data.Date,
+		price:     data.Close,
+		long: &trade{
+			open:      data.Close,
+			direction: types.Buy,
+		},
+		short: &trade{
+			open:      data.Close,
+			direction: types.Sell,
+		},
+		label: "None",
+	})
 	s.determineIndicator()
 	return nil
 }

@@ -1,8 +1,6 @@
 package strategy
 
 import (
-	"fmt"
-
 	"github.com/tradestax/traedor/pkg/datafeed"
 	"github.com/tradestax/traedor/pkg/strategy/types"
 )
@@ -41,11 +39,13 @@ func NewEnsembleStrategy(c []types.Config, ic chan types.Indicator) *EnsembleStr
 }
 
 func (s *EnsembleStrategy) AddData(data datafeed.Data) error {
-	for _, m := range s.members {
-		err := m.AddData(data)
+	for i := range s.members {
+		//		go func() {
+		err := s.members[i].AddData(data)
 		if err != nil {
-			return fmt.Errorf("Failed sending data to ensemble member: %w", err)
+			panic(err)
 		}
+		//	}()
 	}
 	s.determineIndicator()
 	return nil

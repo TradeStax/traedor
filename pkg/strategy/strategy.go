@@ -4,17 +4,19 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/tradestax/traedor/pkg/strategy/emacrossover"
 	"github.com/tradestax/traedor/pkg/strategy/types"
 )
 
 var (
 	baseStrategies = map[string]types.StratBuilder{
-		"SMA":   NewSmaStrategy,
-		"MACD":  NewMacdStrategy,
-		"RSI":   NewRsiStrategy,
-		"Cache": NewCacheStrategy,
-		"Label": NewLabelStrategy,
-		"SC":    NewScStrategy,
+		"SMA":       NewSmaStrategy,
+		"MACD":      NewMacdStrategy,
+		"RSI":       NewRsiStrategy,
+		"Cache":     NewCacheStrategy,
+		"Label":     NewLabelStrategy,
+		"SC":        NewScStrategy,
+		"EMA-Cross": emacrossover.NewEmaCrossoverStrategy,
 	}
 	customStrategies = map[string]types.StratBuilder{}
 )
