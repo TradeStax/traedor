@@ -59,7 +59,7 @@ export default function NewBacktestPage() {
   const createRunMutation = useMutation({
     mutationFn: runsApi.create,
     onSuccess: (data) => {
-      router.push(`/runs/${data.run_id}`);
+      router.push(`/runs/${data.id}`);
     },
     onError: (error) => {
       console.error('Failed to create run:', error);
@@ -149,24 +149,24 @@ export default function NewBacktestPage() {
     <Layout>
       <div className="max-w-2xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-gray-900">New Backtest</h1>
-          <p className="mt-1 text-sm text-gray-600">
+          <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">New Backtest</h1>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
             Configure and start a new backtesting run.
           </p>
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
           <div className="card">
-            <h2 className="text-lg font-medium text-gray-900 mb-4">Market Configuration</h2>
+            <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">Market Configuration</h2>
             
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
               <div>
-                <label htmlFor="symbol" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="symbol" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Symbol
                 </label>
                 <select
                   {...register('symbol', { required: 'Symbol is required' })}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200"
                 >
                   {symbols?.map((symbol) => (
                     <option key={symbol.name} value={symbol.name}>
@@ -178,12 +178,12 @@ export default function NewBacktestPage() {
               </div>
 
               <div>
-                <label htmlFor="timeframe" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="timeframe" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Timeframe
                 </label>
                 <select
                   {...register('timeframe', { required: 'Timeframe is required' })}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200"
                 >
                   {timeframes?.map((tf) => (
                     <option key={tf.value} value={tf.value}>
@@ -195,14 +195,14 @@ export default function NewBacktestPage() {
               </div>
 
               <div className="sm:col-span-2">
-                <label htmlFor="dataPath" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="dataPath" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Data Path
                 </label>
                 <input
                   type="text"
                   {...register('dataPath', { required: 'Data path is required' })}
                   placeholder="./data/MESH23_FUT_CME.txt"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 dark:placeholder-gray-400"
                 />
                 {errors.dataPath && <p className="mt-1 text-sm text-red-600">{errors.dataPath.message}</p>}
               </div>
@@ -210,11 +210,11 @@ export default function NewBacktestPage() {
           </div>
 
           <div className="card">
-            <h2 className="text-lg font-medium text-gray-900 mb-4">Broker Configuration</h2>
+            <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">Broker Configuration</h2>
             
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
               <div>
-                <label htmlFor="startingBalance" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="startingBalance" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Starting Balance ($)
                 </label>
                 <input
@@ -224,13 +224,13 @@ export default function NewBacktestPage() {
                     required: 'Starting balance is required',
                     min: { value: 100, message: 'Minimum balance is $100' }
                   })}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200"
                 />
                 {errors.startingBalance && <p className="mt-1 text-sm text-red-600">{errors.startingBalance.message}</p>}
               </div>
 
               <div>
-                <label htmlFor="trailingStopAmount" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="trailingStopAmount" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Trailing Stop Amount
                 </label>
                 <input
@@ -240,13 +240,13 @@ export default function NewBacktestPage() {
                     required: 'Trailing stop amount is required',
                     min: { value: 0.1, message: 'Minimum trailing stop is 0.1' }
                   })}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200"
                 />
                 {errors.trailingStopAmount && <p className="mt-1 text-sm text-red-600">{errors.trailingStopAmount.message}</p>}
               </div>
 
               <div>
-                <label htmlFor="feePerSide" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="feePerSide" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Fee Per Side ($)
                 </label>
                 <input
@@ -256,13 +256,13 @@ export default function NewBacktestPage() {
                     required: 'Fee per side is required',
                     min: { value: 0, message: 'Fee cannot be negative' }
                   })}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200"
                 />
                 {errors.feePerSide && <p className="mt-1 text-sm text-red-600">{errors.feePerSide.message}</p>}
               </div>
 
               <div>
-                <label htmlFor="openSlippage" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="openSlippage" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Open Slippage
                 </label>
                 <input
@@ -272,7 +272,7 @@ export default function NewBacktestPage() {
                     required: 'Open slippage is required',
                     min: { value: 0, message: 'Slippage cannot be negative' }
                   })}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200"
                 />
                 {errors.openSlippage && <p className="mt-1 text-sm text-red-600">{errors.openSlippage.message}</p>}
               </div>
@@ -280,7 +280,7 @@ export default function NewBacktestPage() {
           </div>
 
           <div className="card">
-            <h2 className="text-lg font-medium text-gray-900 mb-4">Signal Configuration</h2>
+            <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">Signal Configuration</h2>
             
             <div className="space-y-3">
               {availableSignals?.map((signal) => (
@@ -292,8 +292,8 @@ export default function NewBacktestPage() {
                     className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
                   />
                   <label htmlFor={signal.name} className="ml-3">
-                    <span className="text-sm font-medium text-gray-700">{signal.name}</span>
-                    <span className="text-sm text-gray-500 ml-2">{signal.description}</span>
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{signal.name}</span>
+                    <span className="text-sm text-gray-500 dark:text-gray-400 ml-2">{signal.description}</span>
                   </label>
                 </div>
               ))}

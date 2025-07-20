@@ -86,7 +86,7 @@ func (s *SignalAdapterStrategy) signalToIndicator(signal signals.Signal, data da
 
 	return types.Indicator{
 		Direction: direction,
-		Price:     data.Last,
+		Price:     data.Close,
 		Time:      data.Date,
 	}
 }

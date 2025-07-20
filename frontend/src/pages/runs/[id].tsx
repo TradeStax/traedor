@@ -2,6 +2,7 @@ import { useRouter } from 'next/router';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import Layout from '@/components/Layout';
+import RunProgress from '@/components/RunProgress';
 import { runsApi } from '@/lib/api';
 import PerformanceChart from '@/components/PerformanceChart';
 
@@ -13,6 +14,14 @@ export default function RunDetailPage() {
     queryKey: ['run', id],
     queryFn: () => runsApi.get(id as string),
     enabled: !!id,
+  });
+  
+  // Auto-refresh for active runs
+  useQuery({
+    queryKey: ['run-refresh', id],
+    queryFn: () => runsApi.get(id as string),
+    enabled: !!id && (run?.status === 'running' || run?.status === 'queued'),
+    refetchInterval: 2000,
   });
 
   const { data: trades } = useQuery({
@@ -95,9 +104,7 @@ export default function RunDetailPage() {
               Started {format(new Date(run.started_at), 'MMM d, yyyy HH:mm')}
             </p>
           </div>
-          <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(run.status)}`}>
-            {run.status}
-          </span>
+          <RunProgress run={run} showDetails={true} />
         </div>
 
         {/* Configuration Summary */}
@@ -147,6 +154,9 @@ export default function RunDetailPage() {
                   ${formatNumber(run.performance_metrics.max_drawdown)}
                 </div>
                 <div className="text-sm text-gray-500">Max Drawdown</div>
+                <div className="text-xs text-gray-400 mt-1">
+                  {formatPercentage(run.performance_metrics.max_drawdown_percent)}
+                </div>
               </div>
             </div>
             
@@ -175,15 +185,34 @@ export default function RunDetailPage() {
                 <dt className="font-medium text-gray-500">Sharpe Ratio</dt>
                 <dd className="mt-1 text-gray-900">{formatNumber(run.performance_metrics.sharpe_ratio)}</dd>
               </div>
+              <div>
+                <dt className="font-medium text-gray-500">Average MFE</dt>
+                <dd className="mt-1 text-gray-900">
+                  ${formatNumber(run.performance_metrics.average_mfe)} 
+                  <span className="text-xs text-gray-500 ml-1">({formatPercentage(run.performance_metrics.average_mfe_percent)})</span>
+                </dd>
+              </div>
+              <div>
+                <dt className="font-medium text-gray-500">Average MAE</dt>
+                <dd className="mt-1 text-gray-900">
+                  ${formatNumber(run.performance_metrics.average_mae)}
+                  <span className="text-xs text-gray-500 ml-1">({formatPercentage(run.performance_metrics.average_mae_percent)})</span>
+                </dd>
+              </div>
             </div>
           </div>
         )}
 
         {/* Performance Chart */}
-        {trades && trades.length > 0 && (
+        {run.performance_metrics && (
           <div className="card">
-            <h2 className="text-lg font-medium text-gray-900 mb-4">Equity Curve</h2>
-            <PerformanceChart trades={trades} startingBalance={run.config.broker.starting_balance} />
+            <h2 className="text-lg font-medium text-gray-900 mb-4">Equity Curve & Drawdown</h2>
+            <PerformanceChart 
+              trades={trades || []} 
+              startingBalance={run.config.broker.starting_balance}
+              balanceHistory={run.performance_metrics.balance_history}
+              showDrawdown={true}
+            />
           </div>
         )}
 
@@ -212,6 +241,12 @@ export default function RunDetailPage() {
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         P&L
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        MFE
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        MAE
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Open Time
@@ -243,6 +278,26 @@ export default function RunDetailPage() {
                           ) : (
                             '-'
                           )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {trade.mfe !== undefined ? (
+                            <span>
+                              ${formatNumber(trade.mfe)}
+                              {trade.mfe_percent !== undefined && (
+                                <span className="text-xs ml-1">({formatNumber(trade.mfe_percent)}%)</span>
+                              )}
+                            </span>
+                          ) : '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {trade.mae !== undefined ? (
+                            <span>
+                              ${formatNumber(trade.mae)}
+                              {trade.mae_percent !== undefined && (
+                                <span className="text-xs ml-1">({formatNumber(trade.mae_percent)}%)</span>
+                              )}
+                            </span>
+                          ) : '-'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {format(new Date(trade.open_time), 'MMM d, HH:mm')}

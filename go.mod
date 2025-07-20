@@ -7,11 +7,13 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/markcheno/go-talib v0.0.0-20190307022042-cd53a9264d70
 	github.com/spf13/viper v1.13.0
+	github.com/stretchr/testify v1.8.0
 	github.com/tradestax/go-tdameritrade v0.0.0-20221109142255-95df86534099
 	golang.org/x/oauth2 v0.0.0-20220411215720-9780585627b5
 )
 
 require (
+	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/go-querystring v1.0.0 // indirect
@@ -21,6 +23,7 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.5 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/spf13/afero v1.8.2 // indirect
 	github.com/spf13/cast v1.5.0 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect

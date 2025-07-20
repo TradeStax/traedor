@@ -2,14 +2,19 @@ export interface Run {
   id: string;
   config: RunConfig;
   status: RunStatus;
+  status_message: string;
+  progress: number; // 0.0 to 100.0
   started_at: string;
   completed_at?: string;
   performance_metrics?: PerformanceMetrics;
   created_at: string;
   updated_at: string;
+  worker_id?: string;
+  retry_count?: number;
+  last_error?: string;
 }
 
-export type RunStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type RunStatus = 'pending' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'retrying';
 
 export interface RunConfig {
   symbol: string;
@@ -57,6 +62,7 @@ export interface PerformanceMetrics {
   losing_trades: number;
   total_profit: number;
   max_drawdown: number;
+  max_drawdown_percent: number;
   sharpe_ratio: number;
   win_rate: number;
   average_win: number;
@@ -64,6 +70,23 @@ export interface PerformanceMetrics {
   profit_factor: number;
   final_balance: number;
   return_percentage: number;
+  average_mfe: number;
+  average_mfe_percent: number;
+  average_mae: number;
+  average_mae_percent: number;
+  balance_history: BalancePoint[];
+  drawdown_history: DrawdownPoint[];
+}
+
+export interface BalancePoint {
+  time: string;
+  balance: number;
+}
+
+export interface DrawdownPoint {
+  time: string;
+  drawdown: number;
+  drawdown_percent: number;
 }
 
 export interface Trade {
@@ -78,6 +101,10 @@ export interface Trade {
   net_profit?: number;
   max_profit?: number;
   max_drawdown?: number;
+  mfe?: number;
+  mfe_percent?: number;
+  mae?: number;
+  mae_percent?: number;
 }
 
 export interface Signal {

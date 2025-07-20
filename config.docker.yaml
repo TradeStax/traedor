@@ -2,7 +2,7 @@
 
 # Database configuration
 Database:
-  ConnectionString: "postgres://traedor:traedor_password@postgres:5432/traedor?sslmode=disable"
+  ConnectionString: "postgres://traedor:traedor@postgres:5432/traedor?sslmode=disable"
   MaxConnections: 20
   MaxIdleTime: "30m"
 

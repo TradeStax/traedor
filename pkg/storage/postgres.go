@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -389,10 +390,10 @@ func (p *PostgresStorage) SaveTickData(data []datafeed.Data) error {
 		_, err := stmt.Exec(
 			tick.Symbol,
 			time.Unix(tick.Date/1000, 0),
-			tick.Last,
+			tick.Close,
 			tick.Volume,
-			tick.Bid,
-			tick.Ask,
+			tick.Close, // Use Close price as bid for now
+			tick.Close, // Use Close price as ask for now
 		)
 		if err != nil {
 			return fmt.Errorf("failed to insert tick data: %w", err)
@@ -423,10 +424,10 @@ func (p *PostgresStorage) GetTickData(symbol string, startTime, endTime time.Tim
 
 		err := rows.Scan(
 			&tickTime,
-			&tick.Last,
+			&tick.Close,
 			&tick.Volume,
-			&tick.Bid,
-			&tick.Ask,
+			&tick.Close, // Map to Close for compatibility
+			&tick.Close, // Map to Close for compatibility
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan tick data: %w", err)
@@ -525,6 +526,135 @@ func (p *PostgresStorage) DeleteSignalDefinition(id string) error {
 	_, err := p.db.Exec("DELETE FROM signal_definitions WHERE id = $1", id)
 	if err != nil {
 		return fmt.Errorf("failed to delete signal definition: %w", err)
+	}
+	return nil
+}
+
+// Job queue management methods
+func (p *PostgresStorage) UpdateRunProgress(runID string, progress float64, message string) error {
+	_, err := p.db.Exec(`
+		UPDATE runs 
+		SET progress = $2, status_message = $3, updated_at = NOW() 
+		WHERE id = $1
+	`, runID, progress, message)
+	
+	if err != nil {
+		return fmt.Errorf("failed to update run progress: %w", err)
+	}
+	return nil
+}
+
+func (p *PostgresStorage) UpdateRunError(runID string, errorMsg string) error {
+	_, err := p.db.Exec(`
+		UPDATE runs 
+		SET last_error = $2, updated_at = NOW() 
+		WHERE id = $1
+	`, runID, errorMsg)
+	
+	if err != nil {
+		return fmt.Errorf("failed to update run error: %w", err)
+	}
+	return nil
+}
+
+func (p *PostgresStorage) ClaimNextQueuedRun(workerID string) (*Run, error) {
+	tx, err := p.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+	
+	// Find and claim the next queued run atomically
+	var run Run
+	var configJSON []byte
+	var startedAtNullable sql.NullTime
+	var completedAtNullable sql.NullTime
+	
+	err = tx.QueryRow(`
+		UPDATE runs 
+		SET status = $1, worker_id = $2, started_at = NOW(), updated_at = NOW()
+		WHERE id = (
+			SELECT id FROM runs 
+			WHERE status = $3 
+			ORDER BY created_at ASC 
+			LIMIT 1 
+			FOR UPDATE SKIP LOCKED
+		)
+		RETURNING id, config, status, status_message, progress, started_at, completed_at, 
+		          created_at, updated_at, worker_id, retry_count, last_error
+	`, RunStatusRunning, workerID, RunStatusQueued).Scan(
+		&run.ID, &configJSON, &run.Status, &run.StatusMessage, &run.Progress,
+		&startedAtNullable, &completedAtNullable, &run.CreatedAt, &run.UpdatedAt,
+		&run.WorkerID, &run.RetryCount, &run.LastError,
+	)
+	
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// No queued runs available
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to claim run: %w", err)
+	}
+	
+	// Parse config JSON
+	if err := json.Unmarshal(configJSON, &run.Config); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+	}
+	
+	// Handle nullable times
+	if startedAtNullable.Valid {
+		run.StartedAt = startedAtNullable.Time
+	}
+	if completedAtNullable.Valid {
+		run.CompletedAt = &completedAtNullable.Time
+	}
+	
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+	
+	log.Printf("Worker %s claimed run %s", workerID, run.ID)
+	return &run, nil
+}
+
+func (p *PostgresStorage) ReleaseRunClaim(runID string) error {
+	_, err := p.db.Exec(`
+		UPDATE runs 
+		SET worker_id = '', updated_at = NOW() 
+		WHERE id = $1 AND status != $2 AND status != $3
+	`, runID, RunStatusCompleted, RunStatusFailed)
+	
+	if err != nil {
+		return fmt.Errorf("failed to release run claim: %w", err)
+	}
+	return nil
+}
+
+func (p *PostgresStorage) RetryFailedRun(runID string) error {
+	_, err := p.db.Exec(`
+		UPDATE runs 
+		SET status = $1, retry_count = retry_count + 1, worker_id = '', 
+		    last_error = '', progress = 0, status_message = 'Queued for retry', 
+		    updated_at = NOW()
+		WHERE id = $2 AND status = $3
+	`, RunStatusQueued, runID, RunStatusFailed)
+	
+	if err != nil {
+		return fmt.Errorf("failed to retry run: %w", err)
+	}
+	return nil
+}
+
+func (p *PostgresStorage) CancelRun(runID string) error {
+	_, err := p.db.Exec(`
+		UPDATE runs 
+		SET status = $1, status_message = 'Cancelled by user', updated_at = NOW(), 
+		    completed_at = NOW()
+		WHERE id = $2 AND status IN ($3, $4, $5)
+	`, RunStatusCancelled, runID, RunStatusPending, RunStatusQueued, RunStatusRunning)
+	
+	if err != nil {
+		return fmt.Errorf("failed to cancel run: %w", err)
 	}
 	return nil
 }

@@ -1,6 +1,7 @@
 package trader
 
 import (
+	"fmt"
 	"log"
 	"time"
 
@@ -53,18 +54,29 @@ func NewTraderWithStorage(c *config.Config, store storage.IStorage, runID string
 	}
 }
 
-func (t *Trader) Run() {
-	if err := t.authHelper.Authenticate(); err != nil {
-		panic(err)
+func (t *Trader) Run() error {
+	// Update run status to running
+	if t.storage != nil && t.runID != "" {
+		if err := t.storage.UpdateRunStatus(t.runID, storage.RunStatusRunning, nil); err != nil {
+			log.Printf("Failed to update run status to running: %v", err)
+		}
 	}
+
+	if err := t.authHelper.Authenticate(); err != nil {
+		t.updateRunStatusFailed(err)
+		return fmt.Errorf("authentication failed: %w", err)
+	}
+	
 	for _, df := range t.data {
 		df.Start()
 	}
+	
 	for {
 		select {
 		case err := <-t.errorChan:
-			log.Println(err)
-			return
+			log.Printf("Datafeed error: %v", err)
+			t.updateRunStatusFailed(err)
+			return fmt.Errorf("datafeed error: %w", err)
 		case newData := <-t.dataChan:
 			// Save tick data if storage is available
 			if t.storage != nil && t.runID != "" {
@@ -78,8 +90,9 @@ func (t *Trader) Run() {
 			t.broker.AddData(newData)
 			err := t.strategy.AddData(newData)
 			if err != nil {
-				log.Println(err.Error())
-				return
+				log.Printf("Strategy error: %v", err)
+				t.updateRunStatusFailed(err)
+				return fmt.Errorf("strategy error: %w", err)
 			}
 			newInd := <-t.indicatorChan
 			
@@ -99,7 +112,6 @@ func (t *Trader) Run() {
 				}()
 			}
 			
-			//case newInd := <-t.indicatorChan:
 			trade := broker.Trade{
 				Symbol: t.config.Broker.Symbol.Name,
 				Time:   newData.Date,
@@ -117,8 +129,19 @@ func (t *Trader) Run() {
 			}
 			err = t.broker.SendTrade(trade)
 			if err != nil {
-				log.Fatalf("%v\n", err.Error())
+				log.Printf("Broker error: %v", err)
+				t.updateRunStatusFailed(err)
+				return fmt.Errorf("broker error: %w", err)
 			}
+		}
+	}
+}
+
+func (t *Trader) updateRunStatusFailed(err error) {
+	if t.storage != nil && t.runID != "" {
+		// You might want to store the error message in storage as well
+		if updateErr := t.storage.UpdateRunStatus(t.runID, storage.RunStatusFailed, nil); updateErr != nil {
+			log.Printf("Failed to update run status to failed: %v", updateErr)
 		}
 	}
 }
@@ -156,13 +179,34 @@ func (t *Trader) Summary() {
 }
 
 func (t *Trader) calculatePerformanceMetrics(trades []*broker.Trade, finalBalance, percentChange float64) *storage.PerformanceMetrics {
+	// Get balance history and max drawdown from broker
+	balanceHistory := t.broker.GetBalanceHistory()
+	maxDrawdownValue := t.broker.GetMaxDrawdown()
+	maxDrawdownPercent := 0.0
+	if t.config.Broker.StartingBalance > 0 {
+		maxDrawdownPercent = (maxDrawdownValue / t.config.Broker.StartingBalance) * 100
+	}
+	
+	// Convert broker balance points to storage balance points
+	storageBalanceHistory := make([]storage.BalancePoint, len(balanceHistory))
+	for i, bp := range balanceHistory {
+		storageBalanceHistory[i] = storage.BalancePoint{
+			Time:    bp.Time,
+			Balance: bp.Balance,
+		}
+	}
+	
+	// Calculate drawdown history
+	drawdownHistory := t.calculateDrawdownHistory(storageBalanceHistory)
+	
 	if len(trades) == 0 {
 		return &storage.PerformanceMetrics{
 			TotalTrades:      0,
 			WinningTrades:    0,
 			LosingTrades:     0,
 			TotalProfit:      finalBalance - t.config.Broker.StartingBalance,
-			MaxDrawdown:      0.0,
+			MaxDrawdown:      maxDrawdownValue,
+			MaxDrawdownPercent: maxDrawdownPercent,
 			SharpeRatio:      0.0,
 			WinRate:          0.0,
 			AverageWin:       0.0,
@@ -170,6 +214,12 @@ func (t *Trader) calculatePerformanceMetrics(trades []*broker.Trade, finalBalanc
 			ProfitFactor:     0.0,
 			FinalBalance:     finalBalance,
 			ReturnPercentage: percentChange * 100,
+			AverageMFE:       0.0,
+			AverageMFEPercent: 0.0,
+			AverageMAE:       0.0,
+			AverageMAEPercent: 0.0,
+			BalanceHistory:   storageBalanceHistory,
+			DrawdownHistory:  drawdownHistory,
 		}
 	}
 
@@ -178,7 +228,10 @@ func (t *Trader) calculatePerformanceMetrics(trades []*broker.Trade, finalBalanc
 	losingTrades := 0
 	totalWinAmount := 0.0
 	totalLossAmount := 0.0
-	maxDrawdown := 0.0
+	totalMFE := 0.0
+	totalMAE := 0.0
+	totalMFEPercent := 0.0
+	totalMAEPercent := 0.0
 
 	for _, trade := range trades {
 		if trade.Net > 0 {
@@ -189,9 +242,10 @@ func (t *Trader) calculatePerformanceMetrics(trades []*broker.Trade, finalBalanc
 			totalLossAmount += trade.Net
 		}
 		
-		if trade.MaxDrawdown < maxDrawdown {
-			maxDrawdown = trade.MaxDrawdown
-		}
+		totalMFE += trade.MFE
+		totalMAE += trade.MAE
+		totalMFEPercent += trade.MFEPercent
+		totalMAEPercent += trade.MAEPercent
 	}
 
 	winRate := 0.0
@@ -213,13 +267,25 @@ func (t *Trader) calculatePerformanceMetrics(trades []*broker.Trade, finalBalanc
 	if totalLossAmount != 0 {
 		profitFactor = totalWinAmount / (-totalLossAmount)
 	}
+	
+	avgMFE := 0.0
+	avgMAE := 0.0
+	avgMFEPercent := 0.0
+	avgMAEPercent := 0.0
+	if totalTrades > 0 {
+		avgMFE = totalMFE / float64(totalTrades)
+		avgMAE = totalMAE / float64(totalTrades)
+		avgMFEPercent = totalMFEPercent / float64(totalTrades)
+		avgMAEPercent = totalMAEPercent / float64(totalTrades)
+	}
 
 	return &storage.PerformanceMetrics{
 		TotalTrades:      totalTrades,
 		WinningTrades:    winningTrades,
 		LosingTrades:     losingTrades,
 		TotalProfit:      finalBalance - t.config.Broker.StartingBalance,
-		MaxDrawdown:      maxDrawdown,
+		MaxDrawdown:      maxDrawdownValue,
+		MaxDrawdownPercent: maxDrawdownPercent,
 		SharpeRatio:      0.0, // TODO: Calculate Sharpe ratio
 		WinRate:          winRate,
 		AverageWin:       averageWin,
@@ -227,5 +293,40 @@ func (t *Trader) calculatePerformanceMetrics(trades []*broker.Trade, finalBalanc
 		ProfitFactor:     profitFactor,
 		FinalBalance:     finalBalance,
 		ReturnPercentage: percentChange * 100,
+		AverageMFE:       avgMFE,
+		AverageMFEPercent: avgMFEPercent,
+		AverageMAE:       avgMAE,
+		AverageMAEPercent: avgMAEPercent,
+		BalanceHistory:   storageBalanceHistory,
+		DrawdownHistory:  drawdownHistory,
 	}
+}
+
+func (t *Trader) calculateDrawdownHistory(balanceHistory []storage.BalancePoint) []storage.DrawdownPoint {
+	if len(balanceHistory) == 0 {
+		return []storage.DrawdownPoint{}
+	}
+	
+	drawdownHistory := make([]storage.DrawdownPoint, 0)
+	peakBalance := balanceHistory[0].Balance
+	
+	for _, bp := range balanceHistory {
+		if bp.Balance > peakBalance {
+			peakBalance = bp.Balance
+		}
+		
+		drawdown := peakBalance - bp.Balance
+		drawdownPercent := 0.0
+		if peakBalance > 0 {
+			drawdownPercent = (drawdown / peakBalance) * 100
+		}
+		
+		drawdownHistory = append(drawdownHistory, storage.DrawdownPoint{
+			Time:            bp.Time,
+			Drawdown:        drawdown,
+			DrawdownPercent: drawdownPercent,
+		})
+	}
+	
+	return drawdownHistory
 }

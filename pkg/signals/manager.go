@@ -196,7 +196,7 @@ func (sw *SignalWorkflow) InitializeRun(runID string, signalIDs []string) error 
 
 	// Initialize generators for this run
 	for _, signalID := range signalIDs {
-		generator, exists := sw.manager.GetGenerator(signalID)
+		_, exists := sw.manager.GetGenerator(signalID)
 		if !exists {
 			return fmt.Errorf("signal generator '%s' not found", signalID)
 		}

@@ -8,4 +8,6 @@ type IBroker interface {
 	SendTrade(Trade) error
 	Summary()
 	GetTrades() ([]*Trade, error)
+	GetBalanceHistory() []BalancePoint
+	GetMaxDrawdown() float64
 }

@@ -1,110 +1,173 @@
-import { useMemo } from 'react';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  ChartOptions,
-} from 'chart.js';
-import { Line } from 'react-chartjs-2';
+import { useEffect, useRef, memo } from 'react';
+import { createChart, ColorType, IChartApi, ISeriesApi, LineData } from 'lightweight-charts';
 import { Trade } from '@/types';
-
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend
-);
+import { format } from 'date-fns';
 
 interface PerformanceChartProps {
   trades: Trade[];
   startingBalance: number;
+  balanceHistory?: Array<{ time: string; balance: number }>;
+  showDrawdown?: boolean;
 }
 
-export default function PerformanceChart({ trades, startingBalance }: PerformanceChartProps) {
-  const chartData = useMemo(() => {
-    if (!trades || trades.length === 0) {
-      return {
-        labels: [],
-        datasets: [],
-      };
+const PerformanceChart = memo(({ trades, startingBalance, balanceHistory, showDrawdown = false }: PerformanceChartProps) => {
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<IChartApi | null>(null);
+  const balanceSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const drawdownSeriesRef = useRef<ISeriesApi<'Area'> | null>(null);
+
+  useEffect(() => {
+    if (!chartContainerRef.current) return;
+
+    // Check if dark mode is enabled
+    const isDark = document.documentElement.classList.contains('dark');
+
+    // Create chart
+    const chart = createChart(chartContainerRef.current, {
+      layout: {
+        background: { type: ColorType.Solid, color: isDark ? '#1f2937' : '#ffffff' },
+        textColor: isDark ? '#e5e7eb' : '#333',
+      },
+      width: chartContainerRef.current.clientWidth,
+      height: 400,
+      grid: {
+        vertLines: { color: isDark ? '#374151' : '#f0f0f0' },
+        horzLines: { color: isDark ? '#374151' : '#f0f0f0' },
+      },
+      rightPriceScale: {
+        borderColor: isDark ? '#4b5563' : '#e0e0e0',
+      },
+      timeScale: {
+        borderColor: isDark ? '#4b5563' : '#e0e0e0',
+        timeVisible: true,
+        secondsVisible: false,
+      },
+    });
+
+    chartRef.current = chart;
+
+    // Create balance line series
+    const balanceSeries = chart.addLineSeries({
+      color: '#3b82f6',
+      lineWidth: 2,
+      title: 'Account Balance',
+      priceFormat: {
+        type: 'price',
+        precision: 2,
+        minMove: 0.01,
+      },
+    });
+    balanceSeriesRef.current = balanceSeries;
+
+    // Create drawdown area series if requested
+    if (showDrawdown) {
+      const drawdownSeries = chart.addAreaSeries({
+        topColor: 'rgba(239, 68, 68, 0.2)',
+        bottomColor: 'rgba(239, 68, 68, 0)',
+        lineColor: '#ef4444',
+        lineWidth: 2,
+        title: 'Drawdown',
+        priceFormat: {
+          type: 'price',
+          precision: 2,
+          minMove: 0.01,
+        },
+      });
+      drawdownSeriesRef.current = drawdownSeries;
     }
 
-    // Calculate running balance
-    let balance = startingBalance;
-    const equityPoints = [{ time: 'Start', balance }];
-
-    trades
-      .filter(trade => trade.net_profit !== undefined)
-      .sort((a, b) => new Date(a.open_time).getTime() - new Date(b.open_time).getTime())
-      .forEach((trade) => {
-        balance += trade.net_profit!;
-        equityPoints.push({
-          time: new Date(trade.open_time).toLocaleDateString(),
-          balance,
+    // Handle resize
+    const handleResize = () => {
+      if (chartContainerRef.current && chartRef.current) {
+        chartRef.current.applyOptions({
+          width: chartContainerRef.current.clientWidth,
         });
-      });
-
-    return {
-      labels: equityPoints.map(point => point.time),
-      datasets: [
-        {
-          label: 'Account Balance',
-          data: equityPoints.map(point => point.balance),
-          borderColor: 'rgb(59, 130, 246)',
-          backgroundColor: 'rgba(59, 130, 246, 0.1)',
-          borderWidth: 2,
-          fill: true,
-          tension: 0.1,
-        },
-      ],
+      }
     };
-  }, [trades, startingBalance]);
 
-  const options: ChartOptions<'line'> = {
-    responsive: true,
-    plugins: {
-      legend: {
-        position: 'top' as const,
-      },
-      title: {
-        display: false,
-      },
-    },
-    scales: {
-      y: {
-        beginAtZero: false,
-        ticks: {
-          callback: function(value) {
-            return '$' + Number(value).toLocaleString();
-          },
-        },
-      },
-    },
-    interaction: {
-      intersect: false,
-      mode: 'index',
-    },
-  };
+    window.addEventListener('resize', handleResize);
 
-  if (!trades || trades.length === 0) {
-    return (
-      <div className="text-center py-8 text-gray-500">
-        No trade data available for chart
-      </div>
-    );
-  }
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (chartRef.current) {
+        chartRef.current.remove();
+      }
+    };
+  }, [showDrawdown]);
+
+  useEffect(() => {
+    if (!balanceSeriesRef.current) return;
+
+    let data: LineData[] = [];
+
+    if (balanceHistory && balanceHistory.length > 0) {
+      // Use provided balance history
+      data = balanceHistory.map(point => ({
+        time: point.time,
+        value: point.balance,
+      }));
+    } else if (trades && trades.length > 0) {
+      // Calculate balance from trades
+      let balance = startingBalance;
+      const balancePoints: LineData[] = [
+        { time: format(new Date(), 'yyyy-MM-dd'), value: balance },
+      ];
+
+      trades
+        .filter(trade => trade.net_profit !== undefined)
+        .sort((a, b) => new Date(a.open_time).getTime() - new Date(b.open_time).getTime())
+        .forEach((trade) => {
+          balance += trade.net_profit!;
+          const date = format(new Date(trade.close_time || trade.open_time), 'yyyy-MM-dd');
+          balancePoints.push({ time: date, value: balance });
+        });
+
+      data = balancePoints;
+    }
+
+    if (data.length > 0) {
+      balanceSeriesRef.current.setData(data);
+      chartRef.current?.timeScale().fitContent();
+    }
+
+    // Calculate and set drawdown data if enabled
+    if (showDrawdown && drawdownSeriesRef.current && data.length > 0) {
+      let peak = data[0].value;
+      const drawdownData = data.map(point => {
+        if (point.value > peak) {
+          peak = point.value;
+        }
+        const drawdown = peak - point.value;
+        return {
+          time: point.time,
+          value: -drawdown, // Negative to show below zero line
+        };
+      });
+      
+      drawdownSeriesRef.current.setData(drawdownData);
+    }
+
+  }, [trades, startingBalance, balanceHistory, showDrawdown]);
 
   return (
-    <div className="h-64">
-      <Line data={chartData} options={options} />
+    <div className="w-full">
+      <div ref={chartContainerRef} className="w-full" />
+      <div className="mt-4 flex justify-center space-x-6 text-sm text-gray-600 dark:text-gray-400">
+        <div className="flex items-center">
+          <div className="w-4 h-0.5 bg-blue-500 mr-2"></div>
+          <span>Account Balance</span>
+        </div>
+        {showDrawdown && (
+          <div className="flex items-center">
+            <div className="w-4 h-0.5 bg-red-500 mr-2"></div>
+            <span>Drawdown</span>
+          </div>
+        )}
+      </div>
     </div>
   );
-}
+});
+
+PerformanceChart.displayName = 'PerformanceChart';
+
+export default PerformanceChart;

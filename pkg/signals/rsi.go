@@ -59,12 +59,12 @@ func (r *RSISignal) Initialize(params map[string]interface{}) error {
 
 func (r *RSISignal) ProcessTick(tick datafeed.Data) (Signal, error) {
 	// Add price to history
-	r.priceHistory = append(r.priceHistory, tick.Last)
+	r.priceHistory = append(r.priceHistory, tick.Close)
 
 	signal := Signal{
 		Type:      SignalNone,
 		Strength:  0.0,
-		Price:     tick.Last,
+		Price:     tick.Close,
 		Timestamp: tick.Date,
 		Metadata:  make(map[string]interface{}),
 	}

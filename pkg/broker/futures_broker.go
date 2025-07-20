@@ -28,6 +28,15 @@ type FuturesBroker struct {
 	pointPrice    float64
 	output        string
 	week          int
+	balanceHistory []BalancePoint
+	peakBalance    float64
+	currentDrawdown float64
+	maxDrawdown    float64
+}
+
+type BalancePoint struct {
+	Time    time.Time
+	Balance float64
 }
 
 func NewFuturesBroker(c *Config) IBroker {
@@ -44,7 +53,7 @@ func NewFuturesBroker(c *Config) IBroker {
 	if err != nil {
 		panic(fmt.Errorf("Failed to load blackout end time"))
 	}
-	return &FuturesBroker{
+	fb := &FuturesBroker{
 		account: &Account{
 			balance:          c.StartingBalance,
 			availableBalance: c.StartingBalance,
@@ -62,7 +71,19 @@ func NewFuturesBroker(c *Config) IBroker {
 		pointPrice: c.Symbol.PointPrice,
 		stopAmount: c.TrailingStopAmount,
 		feePerSide: c.FeePerSide,
+		balanceHistory: make([]BalancePoint, 0),
+		peakBalance:    c.StartingBalance,
+		currentDrawdown: 0,
+		maxDrawdown:    0,
 	}
+	
+	// Record initial balance
+	fb.balanceHistory = append(fb.balanceHistory, BalancePoint{
+		Time:    time.Now(),
+		Balance: c.StartingBalance,
+	})
+	
+	return fb
 }
 
 func (b *FuturesBroker) GetAccountStats() (*Account, error) {
@@ -139,6 +160,7 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 			b.currentTrade.Quantity = tradeQ
 			// slippage
 			b.currentTrade.Price = b.currentPrice + b.config.OpenSlippage
+			b.currentTrade.OpenPrice = b.currentTrade.Price
 			// set stops
 			tradeStops := make([]stop.IStop, len(b.config.Stops))
 			for i := 0; i < len(b.config.Stops); i++ {
@@ -174,6 +196,7 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 			b.currentTrade.Quantity = tradeQ
 			// slippage
 			b.currentTrade.Price = b.currentPrice - b.config.OpenSlippage
+			b.currentTrade.OpenPrice = b.currentTrade.Price
 			// set stops
 			tradeStops := make([]stop.IStop, len(b.config.Stops))
 			for i := 0; i < len(b.config.Stops); i++ {
@@ -225,6 +248,9 @@ func (b *FuturesBroker) updateBalance() {
 	b.account.balance -= fee
 	b.currentTrade.Net = net
 	log.Printf("Close trade at %v\n", time.Unix(b.currentTime, 0))
+	
+	// Track balance history and drawdown
+	b.trackBalanceAndDrawdown()
 }
 
 func (b *FuturesBroker) closePosition() {
@@ -246,12 +272,26 @@ func (b *FuturesBroker) updateTradeValues(d datafeed.Data) {
 	if b.currentTrade.Operation == Sell {
 		currDiff = currDiff * -1
 	}
+	
+	// Track MFE and MAE in points
 	if currDiff > 0 {
 		// trade is currently positive
 		b.currentTrade.MaxProfit = max(b.currentTrade.MaxProfit, currDiff)
+		b.currentTrade.MFE = b.currentTrade.MaxProfit * b.pointPrice // Convert points to dollars
 	} else {
 		// trade is currently negative
 		b.currentTrade.MaxDrawdown = min(b.currentTrade.MaxDrawdown, currDiff)
+		b.currentTrade.MAE = -b.currentTrade.MaxDrawdown * b.pointPrice // Convert points to dollars
+	}
+	
+	// Calculate MFE and MAE as percentages
+	if b.currentTrade.Price > 0 {
+		// Calculate percentage based on points, not dollars  
+		// MFE and MAE are in dollars, so convert back to points for percentage calculation
+		mfePoints := b.currentTrade.MFE / b.pointPrice
+		maePoints := b.currentTrade.MAE / b.pointPrice
+		b.currentTrade.MFEPercent = (mfePoints / b.currentTrade.Price) * 100
+		b.currentTrade.MAEPercent = (maePoints / b.currentTrade.Price) * 100
 	}
 }
 
@@ -280,6 +320,42 @@ func (b *FuturesBroker) GetTrades() ([]*Trade, error) {
 	tradesCopy := make([]*Trade, len(b.trades))
 	copy(tradesCopy, b.trades)
 	return tradesCopy, nil
+}
+
+func (b *FuturesBroker) trackBalanceAndDrawdown() {
+	currentBalance := b.account.balance
+	timestamp := time.Unix(b.currentTime/1000, 0)
+	
+	// Record balance point
+	b.balanceHistory = append(b.balanceHistory, BalancePoint{
+		Time:    timestamp,
+		Balance: currentBalance,
+	})
+	
+	// Update peak balance
+	if currentBalance > b.peakBalance {
+		b.peakBalance = currentBalance
+		b.currentDrawdown = 0
+	} else {
+		// Calculate current drawdown
+		b.currentDrawdown = b.peakBalance - currentBalance
+		
+		// Update max drawdown
+		if b.currentDrawdown > b.maxDrawdown {
+			b.maxDrawdown = b.currentDrawdown
+		}
+	}
+}
+
+func (b *FuturesBroker) GetBalanceHistory() []BalancePoint {
+	// Return a copy to prevent external modification
+	historyCopy := make([]BalancePoint, len(b.balanceHistory))
+	copy(historyCopy, b.balanceHistory)
+	return historyCopy
+}
+
+func (b *FuturesBroker) GetMaxDrawdown() float64 {
+	return b.maxDrawdown
 }
 
 func max(a, b float64) float64 {

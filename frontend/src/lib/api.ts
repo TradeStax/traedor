@@ -11,7 +11,7 @@ const api = axios.create({
 });
 
 export const runsApi = {
-  list: async (params?: { symbol?: string; status?: string }) => {
+  list: async (params?: { symbol?: string; status?: string; search?: string; limit?: number; offset?: number }) => {
     const response = await api.get<Run[]>('/runs', { params });
     return response.data;
   },
@@ -22,7 +22,17 @@ export const runsApi = {
   },
 
   create: async (config: RunConfig) => {
-    const response = await api.post<{ run_id: string; status: string }>('/runs', { config });
+    const response = await api.post<Run>('/runs', config);
+    return response.data;
+  },
+
+  cancel: async (id: string) => {
+    const response = await api.post(`/runs/${id}/cancel`);
+    return response.data;
+  },
+
+  retry: async (id: string) => {
+    const response = await api.post(`/runs/${id}/retry`);
     return response.data;
   },
 

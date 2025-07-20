@@ -53,7 +53,7 @@ func (s *SMACrossoverSignal) Initialize(params map[string]interface{}) error {
 
 func (s *SMACrossoverSignal) ProcessTick(tick datafeed.Data) (Signal, error) {
 	// Add price to history
-	s.priceHistory = append(s.priceHistory, tick.Last)
+	s.priceHistory = append(s.priceHistory, tick.Close)
 	
 	// Keep only the needed history
 	if len(s.priceHistory) > s.longPeriod {
@@ -63,7 +63,7 @@ func (s *SMACrossoverSignal) ProcessTick(tick datafeed.Data) (Signal, error) {
 	signal := Signal{
 		Type:      SignalNone,
 		Strength:  0.0,
-		Price:     tick.Last,
+		Price:     tick.Close,
 		Timestamp: tick.Date,
 		Metadata:  make(map[string]interface{}),
 	}
@@ -93,9 +93,8 @@ func (s *SMACrossoverSignal) ProcessTick(tick datafeed.Data) (Signal, error) {
 			signal.Type = SignalBuy
 			signal.Strength = s.calculateStrength(shortMA, longMA)
 			s.lastSignal = SignalBuy
-		} 
-		// Bearish crossover: short MA crosses below long MA
-		else if prevShortMA >= prevLongMA && shortMA < longMA {
+		} else if prevShortMA >= prevLongMA && shortMA < longMA {
+			// Bearish crossover: short MA crosses below long MA
 			signal.Type = SignalSell
 			signal.Strength = s.calculateStrength(longMA, shortMA)
 			s.lastSignal = SignalSell

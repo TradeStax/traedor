@@ -14,6 +14,14 @@ type IStorage interface {
 	GetRun(runID string) (*Run, error)
 	ListRuns(filter RunFilter) ([]*Run, error)
 	UpdateRunStatus(runID string, status RunStatus, metrics *PerformanceMetrics) error
+	
+	// Job queue management
+	UpdateRunProgress(runID string, progress float64, message string) error
+	UpdateRunError(runID string, errorMsg string) error
+	ClaimNextQueuedRun(workerID string) (*Run, error)
+	ReleaseRunClaim(runID string) error
+	RetryFailedRun(runID string) error
+	CancelRun(runID string) error
 
 	// Trade management
 	SaveTrade(runID string, trade *broker.Trade) error
@@ -81,20 +89,29 @@ type Run struct {
 	ID                string
 	Config            RunConfig
 	Status            RunStatus
+	StatusMessage     string
+	Progress          float64  // 0.0 to 100.0
 	StartedAt         time.Time
 	CompletedAt       *time.Time
 	PerformanceMetrics *PerformanceMetrics
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
+	// Job tracking
+	WorkerID          string
+	RetryCount        int
+	LastError         string
 }
 
 type RunStatus string
 
 const (
-	RunStatusPending   RunStatus = "pending"
-	RunStatusRunning   RunStatus = "running"
-	RunStatusCompleted RunStatus = "completed"
-	RunStatusFailed    RunStatus = "failed"
+	RunStatusPending    RunStatus = "pending"
+	RunStatusQueued     RunStatus = "queued"
+	RunStatusRunning    RunStatus = "running"
+	RunStatusCompleted  RunStatus = "completed"
+	RunStatusFailed     RunStatus = "failed"
+	RunStatusCancelled  RunStatus = "cancelled"
+	RunStatusRetrying   RunStatus = "retrying"
 )
 
 type PerformanceMetrics struct {
@@ -103,6 +120,7 @@ type PerformanceMetrics struct {
 	LosingTrades     int
 	TotalProfit      float64
 	MaxDrawdown      float64
+	MaxDrawdownPercent float64
 	SharpeRatio      float64
 	WinRate          float64
 	AverageWin       float64
@@ -110,6 +128,23 @@ type PerformanceMetrics struct {
 	ProfitFactor     float64
 	FinalBalance     float64
 	ReturnPercentage float64
+	AverageMFE       float64  // Average Maximum Favorable Excursion
+	AverageMFEPercent float64
+	AverageMAE       float64  // Average Maximum Adverse Excursion
+	AverageMAEPercent float64
+	BalanceHistory   []BalancePoint  // Account balance over time
+	DrawdownHistory  []DrawdownPoint // Drawdown over time
+}
+
+type BalancePoint struct {
+	Time    time.Time
+	Balance float64
+}
+
+type DrawdownPoint struct {
+	Time     time.Time
+	Drawdown float64
+	DrawdownPercent float64
 }
 
 type Signal struct {
