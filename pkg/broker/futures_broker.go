@@ -275,6 +275,13 @@ func (b *FuturesBroker) Summary() {
 	log.Printf("Accuracy: %.02f%%\n", (float64(b.wins)/total)*100)
 }
 
+func (b *FuturesBroker) GetTrades() ([]*Trade, error) {
+	// Return a copy of trades to prevent external modification
+	tradesCopy := make([]*Trade, len(b.trades))
+	copy(tradesCopy, b.trades)
+	return tradesCopy, nil
+}
+
 func max(a, b float64) float64 {
 	if a > b {
 		return a

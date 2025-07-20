@@ -1,0 +1,45 @@
+# Traedor Docker Configuration
+
+# Database configuration
+Database:
+  ConnectionString: "postgres://traedor:traedor_password@postgres:5432/traedor?sslmode=disable"
+  MaxConnections: 20
+  MaxIdleTime: "30m"
+
+# API configuration
+API:
+  Host: "0.0.0.0"  # Listen on all interfaces in container
+  Port: 8080
+
+# Auth Helper configuration
+AuthConfig:
+  AuthHelper: "None"
+
+# Example datafeed configuration (adjust paths as needed)
+Datafeeds:
+  - Type: "SC"
+    Symbol: "/MES"
+    DataPath: "./data/MESH23_FUT_CME.txt"
+    Interval: "0ns"
+
+# Broker Configuration
+Broker:
+  Type: "Futures"
+  StartingBalance: 10000.0
+  WeeklyWithdrawl: 0.0
+  TrailingStopAmount: 10.0
+  FeePerSide: 2.5
+  OpenSlippage: 0.25
+  Symbol: 
+    Name: "/MES"
+    Margin: 1200
+    PointPrice: 5
+
+# Strategy Configuration
+Strategy:
+  - Type: "SC"
+    Symbol: "/MES"
+    Params:
+      DataPath: "./data/MESH23_FUT_CME-1Min.txt"
+      Values: ["12B"]
+      Timeframe: "1m"

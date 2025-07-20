@@ -3,6 +3,8 @@ module github.com/tradestax/traedor
 go 1.18
 
 require (
+	github.com/gorilla/mux v1.8.0
+	github.com/lib/pq v1.10.9
 	github.com/markcheno/go-talib v0.0.0-20190307022042-cd53a9264d70
 	github.com/spf13/viper v1.13.0
 	github.com/tradestax/go-tdameritrade v0.0.0-20221109142255-95df86534099

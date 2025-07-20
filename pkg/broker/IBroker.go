@@ -7,4 +7,5 @@ type IBroker interface {
 	AddData(datafeed.Data)
 	SendTrade(Trade) error
 	Summary()
+	GetTrades() ([]*Trade, error)
 }

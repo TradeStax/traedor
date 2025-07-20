@@ -1,4 +1,15 @@
-# Trador Config
+# Traedor Config
+
+# Database configuration
+Database:
+  ConnectionString: "postgres://traedor:password@localhost:5432/traedor?sslmode=disable"
+  MaxConnections: 10
+  MaxIdleTime: "30m"
+
+# API configuration
+API:
+  Host: "localhost"
+  Port: 8080
 
 # Auth Helper configuration
 # Used for TDA
