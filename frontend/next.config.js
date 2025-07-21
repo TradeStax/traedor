@@ -4,12 +4,12 @@ const nextConfig = {
   output: 'standalone',
   async rewrites() {
     const apiUrl = process.env.NODE_ENV === 'production' 
-      ? 'http://backend:8080/api/v1/:path*'
-      : 'http://localhost:8080/api/v1/:path*';
+      ? 'http://backend:8080/api/:path*'
+      : 'http://localhost:8080/api/:path*';
     
     return [
       {
-        source: '/api/v1/:path*',
+        source: '/api/:path*',
         destination: apiUrl,
       },
     ];

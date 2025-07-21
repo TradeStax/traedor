@@ -1,9 +1,9 @@
 import axios from 'axios';
 import { Run, RunConfig, Trade, Signal, SignalDefinition } from '@/types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
+const API_BASE_URL = '/api';
 
-const api = axios.create({
+export const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
@@ -81,6 +81,53 @@ export const configApi = {
 
   getTimeframes: async () => {
     const response = await api.get<{ value: string; description: string }[]>('/config/timeframes');
+    return response.data;
+  },
+};
+
+export const dataApi = {
+  getFiles: async () => {
+    const response = await api.get('/data/files');
+    return response.data;
+  },
+
+  scanFiles: async () => {
+    const response = await api.post('/data/scan');
+    return response.data;
+  },
+
+  importFile: async (filePath: string) => {
+    const response = await api.post('/data/import/new', { file_path: filePath });
+    return response.data;
+  },
+
+  deleteFile: async (fileId: string) => {
+    const response = await api.delete(`/data/files/${fileId}`);
+    return response.data;
+  },
+
+  deleteFailedImports: async () => {
+    const response = await api.delete('/data/files/failed');
+    return response.data;
+  },
+
+  deletePendingImports: async () => {
+    const response = await api.delete('/data/files/pending');
+    return response.data;
+  },
+
+  retryFile: async (fileId: string) => {
+    const response = await api.post(`/data/files/${fileId}/retry`);
+    return response.data;
+  },
+
+  getOHLCData: async (symbol: string, start?: string, end?: string) => {
+    const params = new URLSearchParams();
+    params.append('symbol', symbol);
+    if (start) params.append('start', start);
+    if (end) params.append('end', end);
+    
+    const response = await api.get(`/data/ohlc?${params.toString()}`);
     return response.data;
   },
 };

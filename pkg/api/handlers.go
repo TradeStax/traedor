@@ -27,29 +27,43 @@ func NewServer(store storage.IStorage) *Server {
 func (s *Server) setupRoutes() {
 	api := s.router.PathPrefix("/api").Subrouter()
 	
+	// Enable CORS middleware on the API subrouter
+	api.Use(corsMiddleware)
+	
 	// Run management
-	api.HandleFunc("/runs", s.handleCreateRun).Methods("POST")
-	api.HandleFunc("/runs", s.handleListRuns).Methods("GET")
-	api.HandleFunc("/runs/{id}", s.handleGetRun).Methods("GET")
-	api.HandleFunc("/runs/{id}/cancel", s.handleCancelRun).Methods("POST")
-	api.HandleFunc("/runs/{id}/retry", s.handleRetryRun).Methods("POST")
+	api.HandleFunc("/runs", s.handleCreateRun).Methods("POST", "OPTIONS")
+	api.HandleFunc("/runs", s.handleListRuns).Methods("GET", "OPTIONS")
+	api.HandleFunc("/runs/{id}", s.handleGetRun).Methods("GET", "OPTIONS")
+	api.HandleFunc("/runs/{id}/cancel", s.handleCancelRun).Methods("POST", "OPTIONS")
+	api.HandleFunc("/runs/{id}/retry", s.handleRetryRun).Methods("POST", "OPTIONS")
 	
 	// Run data
-	api.HandleFunc("/runs/{id}/trades", s.handleGetTrades).Methods("GET")
-	api.HandleFunc("/runs/{id}/signals", s.handleGetSignals).Methods("GET")
+	api.HandleFunc("/runs/{id}/trades", s.handleGetTrades).Methods("GET", "OPTIONS")
+	api.HandleFunc("/runs/{id}/signals", s.handleGetSignals).Methods("GET", "OPTIONS")
 	
 	// Signal definitions
-	api.HandleFunc("/signals", s.handleListSignals).Methods("GET")
-	api.HandleFunc("/signals", s.handleCreateSignal).Methods("POST")
-	api.HandleFunc("/signals/{id}", s.handleGetSignal).Methods("GET")
-	api.HandleFunc("/signals/{id}", s.handleUpdateSignal).Methods("PUT")
-	api.HandleFunc("/signals/{id}", s.handleDeleteSignal).Methods("DELETE")
+	api.HandleFunc("/signals", s.handleListSignals).Methods("GET", "OPTIONS")
+	api.HandleFunc("/signals", s.handleCreateSignal).Methods("POST", "OPTIONS")
+	api.HandleFunc("/signals/{id}", s.handleGetSignal).Methods("GET", "OPTIONS")
+	api.HandleFunc("/signals/{id}", s.handleUpdateSignal).Methods("PUT", "OPTIONS")
+	api.HandleFunc("/signals/{id}", s.handleDeleteSignal).Methods("DELETE", "OPTIONS")
+	
+	// Configuration
+	api.HandleFunc("/config/symbols", s.handleGetSymbols).Methods("GET", "OPTIONS")
+	api.HandleFunc("/config/timeframes", s.handleGetTimeframes).Methods("GET", "OPTIONS")
+	
+	// Market data import
+	api.HandleFunc("/data/files", s.handleListDataFiles).Methods("GET", "OPTIONS")
+	api.HandleFunc("/data/files/failed", s.handleDeleteFailedImports).Methods("DELETE", "OPTIONS")
+	api.HandleFunc("/data/files/pending", s.handleDeletePendingImports).Methods("DELETE", "OPTIONS")
+	api.HandleFunc("/data/files/{id}", s.handleDeleteDataFile).Methods("DELETE", "OPTIONS")
+	api.HandleFunc("/data/files/{id}/retry", s.handleRetryDataFile).Methods("POST", "OPTIONS")
+	api.HandleFunc("/data/scan", s.handleScanDataFiles).Methods("POST", "OPTIONS")
+	api.HandleFunc("/data/import/{id}", s.handleImportDataFile).Methods("POST", "OPTIONS")
+	api.HandleFunc("/data/ohlc", s.handleGetOHLCData).Methods("GET", "OPTIONS")
 	
 	// Health check
-	api.HandleFunc("/health", s.handleHealth).Methods("GET")
-	
-	// Enable CORS
-	s.router.Use(corsMiddleware)
+	api.HandleFunc("/health", s.handleHealth).Methods("GET", "OPTIONS")
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -241,11 +255,133 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(w, http.StatusOK, health)
 }
 
+func (s *Server) handleOptions(w http.ResponseWriter, r *http.Request) {
+	// This is handled by the CORS middleware
+	w.WriteHeader(http.StatusOK)
+}
+
 // Helper functions
+// handleDeleteDataFile deletes a specific market data file by ID
+func (s *Server) handleDeleteDataFile(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	fileID := vars["id"]
+	
+	if fileID == "" {
+		writeErrorResponse(w, http.StatusBadRequest, "File ID is required")
+		return
+	}
+	
+	// Delete the file record
+	err := s.storage.DeleteMarketDataFile(fileID)
+	if err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, "Failed to delete file")
+		return
+	}
+	
+	writeJSONResponse(w, http.StatusOK, map[string]string{
+		"message": "File deleted successfully",
+	})
+}
+
+// handleDeleteFailedImports deletes all failed import records
+func (s *Server) handleDeleteFailedImports(w http.ResponseWriter, r *http.Request) {
+	count, err := s.storage.DeleteFailedImports()
+	if err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, "Failed to delete failed imports")
+		return
+	}
+	
+	writeJSONResponse(w, http.StatusOK, map[string]interface{}{
+		"message": "Failed imports deleted successfully",
+		"count":   count,
+	})
+}
+
+// handleDeletePendingImports deletes all pending import records
+func (s *Server) handleDeletePendingImports(w http.ResponseWriter, r *http.Request) {
+	count, err := s.storage.DeletePendingImports()
+	if err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, "Failed to delete pending imports")
+		return
+	}
+	
+	writeJSONResponse(w, http.StatusOK, map[string]interface{}{
+		"message": "Pending imports deleted successfully",
+		"count":   count,
+	})
+}
+
 func writeJSONResponse(w http.ResponseWriter, statusCode int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	json.NewEncoder(w).Encode(data)
+}
+
+func (s *Server) handleGetSymbols(w http.ResponseWriter, r *http.Request) {
+	availableSymbols, err := s.storage.GetAvailableSymbols()
+	if err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, "Failed to get available symbols")
+		return
+	}
+	
+	// Map symbols to descriptions
+	symbolDescriptions := map[string]string{
+		"/MES": "Micro E-mini S&P 500",
+		"/MNQ": "Micro E-mini NASDAQ-100", 
+		"/MYM": "Micro E-mini Dow",
+		"/M2K": "Micro E-mini Russell 2000",
+		"/ES":  "E-mini S&P 500",
+		"/NQ":  "E-mini NASDAQ-100",
+	}
+	
+	symbols := make([]map[string]string, 0, len(availableSymbols))
+	for _, symbol := range availableSymbols {
+		description := symbolDescriptions[symbol]
+		if description == "" {
+			description = symbol // Fallback to symbol name if no description
+		}
+		symbols = append(symbols, map[string]string{
+			"name":        symbol,
+			"description": description,
+		})
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(symbols)
+}
+
+func (s *Server) handleGetTimeframes(w http.ResponseWriter, r *http.Request) {
+	availableTimeframes, err := s.storage.GetAvailableTimeframes()
+	if err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, "Failed to get available timeframes")
+		return
+	}
+	
+	// Map timeframes to descriptions
+	timeframeDescriptions := map[string]string{
+		"1m":  "1 minute",
+		"5m":  "5 minutes", 
+		"15m": "15 minutes",
+		"30m": "30 minutes",
+		"1h":  "1 hour",
+		"4h":  "4 hours",
+		"1d":  "1 day",
+	}
+	
+	timeframes := make([]map[string]string, 0, len(availableTimeframes))
+	for _, tf := range availableTimeframes {
+		description := timeframeDescriptions[tf]
+		if description == "" {
+			description = tf // Fallback to timeframe value if no description
+		}
+		timeframes = append(timeframes, map[string]string{
+			"value":       tf,
+			"description": description,
+		})
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(timeframes)
 }
 
 func writeErrorResponse(w http.ResponseWriter, statusCode int, message string) {

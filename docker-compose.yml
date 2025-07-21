@@ -30,7 +30,7 @@ services:
     environment:
       - DATABASE_URL=postgres://traedor:traedor@postgres:5432/traedor?sslmode=disable
     volumes:
-      - ./data:/app/data:ro
+      - ./data:/app/data
       - ./config.docker.yaml:/app/config.yaml:ro
     ports:
       - "8080:8080"
@@ -41,7 +41,7 @@ services:
       - traedor-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/api/v1/health"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -53,7 +53,7 @@ services:
       dockerfile: Dockerfile
     container_name: traedor-frontend
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8080/api/v1
+      - NEXT_PUBLIC_API_URL=http://localhost:8080/api
     ports:
       - "3030:3000"
     depends_on:

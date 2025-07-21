@@ -196,14 +196,16 @@ func (p *PostgresStorage) ListRuns(filter RunFilter) ([]*Run, error) {
 }
 
 func (p *PostgresStorage) UpdateRunStatus(runID string, status RunStatus, metrics *PerformanceMetrics) error {
-	var metricsJSON []byte
+	var metricsJSON sql.NullString
 	var err error
 
 	if metrics != nil {
-		metricsJSON, err = json.Marshal(metrics)
+		jsonBytes, err := json.Marshal(metrics)
 		if err != nil {
 			return fmt.Errorf("failed to marshal metrics: %w", err)
 		}
+		metricsJSON.String = string(jsonBytes)
+		metricsJSON.Valid = true
 	}
 
 	query := `
@@ -657,6 +659,83 @@ func (p *PostgresStorage) CancelRun(runID string) error {
 		return fmt.Errorf("failed to cancel run: %w", err)
 	}
 	return nil
+}
+
+func (p *PostgresStorage) GetAvailableSymbols() ([]string, error) {
+	query := `SELECT DISTINCT symbol FROM ohlc_data ORDER BY symbol`
+	
+	rows, err := p.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query available symbols: %w", err)
+	}
+	defer rows.Close()
+	
+	var symbols []string
+	for rows.Next() {
+		var symbol string
+		if err := rows.Scan(&symbol); err != nil {
+			return nil, fmt.Errorf("failed to scan symbol: %w", err)
+		}
+		symbols = append(symbols, symbol)
+	}
+	
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating symbols: %w", err)
+	}
+	
+	return symbols, nil
+}
+
+func (p *PostgresStorage) GetAvailableTimeframes() ([]string, error) {
+	// Analyze time intervals from the data to determine available timeframes
+	query := `
+		WITH intervals AS (
+			SELECT 
+				LEAD(time) OVER (ORDER BY time) - time AS interval_duration
+			FROM ohlc_data 
+			ORDER BY time 
+			LIMIT 1000
+		)
+		SELECT DISTINCT 
+			CASE 
+				WHEN interval_duration = INTERVAL '1 minute' THEN '1m'
+				WHEN interval_duration = INTERVAL '5 minutes' THEN '5m'
+				WHEN interval_duration = INTERVAL '15 minutes' THEN '15m'
+				WHEN interval_duration = INTERVAL '30 minutes' THEN '30m'
+				WHEN interval_duration = INTERVAL '1 hour' THEN '1h'
+				WHEN interval_duration = INTERVAL '4 hours' THEN '4h'
+				WHEN interval_duration = INTERVAL '1 day' THEN '1d'
+				ELSE NULL
+			END as timeframe
+		FROM intervals 
+		WHERE interval_duration IS NOT NULL
+		ORDER BY timeframe
+	`
+	
+	rows, err := p.db.Query(query)
+	if err != nil {
+		// Fallback to common timeframes if query fails
+		return []string{"30m", "1h", "1d"}, nil
+	}
+	defer rows.Close()
+	
+	var timeframes []string
+	for rows.Next() {
+		var timeframe sql.NullString
+		if err := rows.Scan(&timeframe); err != nil {
+			continue
+		}
+		if timeframe.Valid && timeframe.String != "" {
+			timeframes = append(timeframes, timeframe.String)
+		}
+	}
+	
+	// If no timeframes detected, return common ones
+	if len(timeframes) == 0 {
+		timeframes = []string{"30m", "1h", "1d"}
+	}
+	
+	return timeframes, nil
 }
 
 func (p *PostgresStorage) Close() error {

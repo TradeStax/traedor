@@ -13,6 +13,7 @@ import (
 	"github.com/tradestax/traedor/internal/config"
 	"github.com/tradestax/traedor/pkg/api"
 	"github.com/tradestax/traedor/pkg/jobs"
+	"github.com/tradestax/traedor/pkg/services"
 	"github.com/tradestax/traedor/pkg/storage"
 )
 
@@ -37,6 +38,12 @@ func main() {
 	// Start worker pool
 	workerPool.Start()
 	defer workerPool.Stop()
+	
+	// Start file watcher for automatic data import
+	dataDir := getEnvString("DATA_DIR", "/app/data")
+	fileWatcher := services.NewFileWatcher(dataDir, store)
+	fileWatcher.Start()
+	defer fileWatcher.Stop()
 	
 	// Start HTTP server
 	server := &http.Server{
@@ -76,6 +83,13 @@ func getEnvInt(key string, defaultValue int) int {
 		if intValue, err := strconv.Atoi(value); err == nil {
 			return intValue
 		}
+	}
+	return defaultValue
+}
+
+func getEnvString(key string, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
 	}
 	return defaultValue
 }
