@@ -58,6 +58,9 @@ type IStorage interface {
 	GetTechnicalIndicators(symbol string, indicatorName string, startTime, endTime time.Time) ([]TechnicalIndicator, error)
 	GetAvailableSymbols() ([]string, error)
 	GetAvailableTimeframes() ([]string, error)
+	GetSymbolDetails() ([]Symbol, error)
+	GetTimeframeDetails() ([]Timeframe, error)
+	GetSymbolDataAvailability(symbol string) (*DataAvailability, error)
 
 	// Cleanup
 	Close() error
@@ -260,4 +263,31 @@ type ProgressUpdate struct {
 	CurrentBatch                int
 	TotalBatches                int
 	LastProcessedLinePreview    string
+}
+
+type Symbol struct {
+	Name         string  `json:"name"`
+	Description  string  `json:"description"`
+	Margin       float64 `json:"margin"`
+	PointPrice   float64 `json:"point_price"`
+	TickSize     float64 `json:"tick_size"`
+	ContractSize int     `json:"contract_size"`
+	Currency     string  `json:"currency"`
+	Exchange     string  `json:"exchange"`
+	Active       bool    `json:"active"`
+}
+
+type Timeframe struct {
+	Value           string `json:"value"`
+	Description     string `json:"description"`
+	IntervalSeconds int    `json:"interval_seconds"`
+	Active          bool   `json:"active"`
+}
+
+type DataAvailability struct {
+	Symbol         string    `json:"symbol"`
+	EarliestData   time.Time `json:"earliest_data"`
+	LatestData     time.Time `json:"latest_data"`
+	TotalRecords   int64     `json:"total_records"`
+	AvgIntervalSec int       `json:"avg_interval_seconds"`
 }

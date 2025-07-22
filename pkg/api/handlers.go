@@ -50,6 +50,7 @@ func (s *Server) setupRoutes() {
 	
 	// Configuration
 	api.HandleFunc("/config/symbols", s.handleGetSymbols).Methods("GET", "OPTIONS")
+	api.HandleFunc("/config/symbols/{symbol}/availability", s.handleGetSymbolDataAvailability).Methods("GET", "OPTIONS")
 	api.HandleFunc("/config/timeframes", s.handleGetTimeframes).Methods("GET", "OPTIONS")
 	
 	// Market data import
@@ -318,32 +319,11 @@ func writeJSONResponse(w http.ResponseWriter, statusCode int, data interface{}) 
 }
 
 func (s *Server) handleGetSymbols(w http.ResponseWriter, r *http.Request) {
-	availableSymbols, err := s.storage.GetAvailableSymbols()
+	// Get symbol details from database
+	symbols, err := s.storage.GetSymbolDetails()
 	if err != nil {
-		writeErrorResponse(w, http.StatusInternalServerError, "Failed to get available symbols")
+		writeErrorResponse(w, http.StatusInternalServerError, "Failed to get symbols")
 		return
-	}
-	
-	// Map symbols to descriptions
-	symbolDescriptions := map[string]string{
-		"/MES": "Micro E-mini S&P 500",
-		"/MNQ": "Micro E-mini NASDAQ-100", 
-		"/MYM": "Micro E-mini Dow",
-		"/M2K": "Micro E-mini Russell 2000",
-		"/ES":  "E-mini S&P 500",
-		"/NQ":  "E-mini NASDAQ-100",
-	}
-	
-	symbols := make([]map[string]string, 0, len(availableSymbols))
-	for _, symbol := range availableSymbols {
-		description := symbolDescriptions[symbol]
-		if description == "" {
-			description = symbol // Fallback to symbol name if no description
-		}
-		symbols = append(symbols, map[string]string{
-			"name":        symbol,
-			"description": description,
-		})
 	}
 	
 	w.Header().Set("Content-Type", "application/json")
@@ -351,37 +331,34 @@ func (s *Server) handleGetSymbols(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetTimeframes(w http.ResponseWriter, r *http.Request) {
-	availableTimeframes, err := s.storage.GetAvailableTimeframes()
+	// Get timeframe details from database
+	timeframes, err := s.storage.GetTimeframeDetails()
 	if err != nil {
-		writeErrorResponse(w, http.StatusInternalServerError, "Failed to get available timeframes")
+		writeErrorResponse(w, http.StatusInternalServerError, "Failed to get timeframes")
 		return
-	}
-	
-	// Map timeframes to descriptions
-	timeframeDescriptions := map[string]string{
-		"1m":  "1 minute",
-		"5m":  "5 minutes", 
-		"15m": "15 minutes",
-		"30m": "30 minutes",
-		"1h":  "1 hour",
-		"4h":  "4 hours",
-		"1d":  "1 day",
-	}
-	
-	timeframes := make([]map[string]string, 0, len(availableTimeframes))
-	for _, tf := range availableTimeframes {
-		description := timeframeDescriptions[tf]
-		if description == "" {
-			description = tf // Fallback to timeframe value if no description
-		}
-		timeframes = append(timeframes, map[string]string{
-			"value":       tf,
-			"description": description,
-		})
 	}
 	
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(timeframes)
+}
+
+func (s *Server) handleGetSymbolDataAvailability(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	symbol := vars["symbol"]
+	
+	availability, err := s.storage.GetSymbolDataAvailability(symbol)
+	if err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, "Failed to get data availability")
+		return
+	}
+	
+	if availability == nil {
+		writeErrorResponse(w, http.StatusNotFound, "No data available for symbol")
+		return
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(availability)
 }
 
 func writeErrorResponse(w http.ResponseWriter, statusCode int, message string) {

@@ -75,12 +75,38 @@ export const signalsApi = {
 
 export const configApi = {
   getSymbols: async () => {
-    const response = await api.get<{ name: string; description: string }[]>('/config/symbols');
+    const response = await api.get<{
+      name: string;
+      description: string;
+      margin: number;
+      point_price: number;
+      tick_size: number;
+      contract_size: number;
+      currency: string;
+      exchange: string;
+      active: boolean;
+    }[]>('/config/symbols');
     return response.data;
   },
 
   getTimeframes: async () => {
-    const response = await api.get<{ value: string; description: string }[]>('/config/timeframes');
+    const response = await api.get<{
+      value: string;
+      description: string;
+      interval_seconds: number;
+      active: boolean;
+    }[]>('/config/timeframes');
+    return response.data;
+  },
+
+  getSymbolDataAvailability: async (symbol: string) => {
+    const response = await api.get<{
+      symbol: string;
+      earliest_data: string;
+      latest_data: string;
+      total_records: number;
+      avg_interval_seconds: number;
+    }>(`/config/symbols/${symbol}/availability`);
     return response.data;
   },
 };

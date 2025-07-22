@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/tradestax/traedor/pkg/auth"
+	"github.com/tradestax/traedor/pkg/storage"
 )
 
 type Config struct {
@@ -17,6 +18,7 @@ type Config struct {
 	StartTime int64
 	EndTime   int64
 	Print     bool
+	Storage   interface{} // For database datafeed
 }
 
 func NewDatafeed(c *Config, ah auth.IAuthHelper, dc chan Data, ec chan error) IDatafeed {
@@ -30,6 +32,12 @@ func NewDatafeed(c *Config, ah auth.IAuthHelper, dc chan Data, ec chan error) ID
 		df = NewTDADatafeed(c, ah, dc, ec)
 	case "SC":
 		df = NewLocalDatafeed(c, dc, ec)
+	case "Database":
+		if store, ok := c.Storage.(storage.IStorage); ok {
+			df = NewDBDatafeed(c, store, dc, ec)
+		} else {
+			panic(fmt.Errorf("Database datafeed requires storage instance"))
+		}
 	default:
 		panic(fmt.Errorf("Invalid datafeed specified"))
 	}

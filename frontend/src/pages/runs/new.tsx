@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -9,7 +9,8 @@ import { RunConfig } from '@/types';
 interface BacktestFormData {
   symbol: string;
   timeframe: string;
-  dataPath: string;
+  startDate: string;
+  endDate: string;
   startingBalance: number;
   trailingStopAmount: number;
   feePerSide: number;
@@ -70,17 +71,18 @@ export default function NewBacktestPage() {
   const onSubmit = async (data: BacktestFormData) => {
     setIsSubmitting(true);
 
+    const symbolConfig = getSymbolConfig(data.symbol);
     const runConfig: RunConfig = {
       symbol: data.symbol,
       timeframe: data.timeframe,
-      start_time: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days ago
-      end_time: new Date().toISOString(),
+      start_time: new Date(data.startDate).toISOString(),
+      end_time: new Date(data.endDate).toISOString(),
       datafeeds: [
         {
-          type: 'SC',
+          type: 'Database',
           symbol: data.symbol,
-          data_path: data.dataPath,
-          interval: '0ns',
+          data_path: '',
+          interval: data.timeframe,
         },
       ],
       broker: {
@@ -92,8 +94,8 @@ export default function NewBacktestPage() {
         open_slippage: data.openSlippage,
         symbol: {
           name: data.symbol,
-          margin: getMarginForSymbol(data.symbol),
-          point_price: getPointPriceForSymbol(data.symbol),
+          margin: symbolConfig.margin,
+          point_price: symbolConfig.pointPrice,
         },
       },
       strategies: [
@@ -101,7 +103,6 @@ export default function NewBacktestPage() {
           type: 'SC',
           symbol: data.symbol,
           params: {
-            data_path: data.dataPath.replace('.txt', '-1Min.txt'),
             values: ['12B'],
           },
         },
@@ -112,28 +113,27 @@ export default function NewBacktestPage() {
     createRunMutation.mutate(runConfig);
   };
 
-  const getMarginForSymbol = (symbol: string): number => {
-    const margins: Record<string, number> = {
-      '/MES': 1200,
-      '/MNQ': 1800,
-      '/MYM': 800,
-      '/M2K': 900,
-      '/ES': 12000,
-      '/NQ': 18000,
-    };
-    return margins[symbol] || 1200;
-  };
+  // Fetch data availability when symbol changes
+  const { data: dataAvailability } = useQuery({
+    queryKey: ['dataAvailability', selectedSymbol],
+    queryFn: () => configApi.getSymbolDataAvailability(selectedSymbol),
+    enabled: !!selectedSymbol,
+  });
 
-  const getPointPriceForSymbol = (symbol: string): number => {
-    const pointPrices: Record<string, number> = {
-      '/MES': 5,
-      '/MNQ': 2,
-      '/MYM': 0.5,
-      '/M2K': 5,
-      '/ES': 50,
-      '/NQ': 20,
+  // Update date range when data availability loads
+  useEffect(() => {
+    if (dataAvailability) {
+      setValue('startDate', new Date(dataAvailability.earliest_data).toISOString().split('T')[0]);
+      setValue('endDate', new Date(dataAvailability.latest_data).toISOString().split('T')[0]);
+    }
+  }, [dataAvailability, setValue]);
+
+  const getSymbolConfig = (symbolName: string) => {
+    const symbol = symbols?.find(s => s.name === symbolName);
+    return {
+      margin: symbol?.margin || 1200,
+      pointPrice: symbol?.point_price || 5,
     };
-    return pointPrices[symbol] || 5;
   };
 
   const handleSignalSelection = (signalId: string, checked: boolean) => {
@@ -194,18 +194,38 @@ export default function NewBacktestPage() {
                 {errors.timeframe && <p className="mt-1 text-sm text-red-600">{errors.timeframe.message}</p>}
               </div>
 
-              <div className="sm:col-span-2">
-                <label htmlFor="dataPath" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Data Path
+              <div>
+                <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Start Date
                 </label>
                 <input
-                  type="text"
-                  {...register('dataPath', { required: 'Data path is required' })}
-                  placeholder="./data/MESH23_FUT_CME.txt"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 dark:placeholder-gray-400"
+                  type="date"
+                  {...register('startDate', { required: 'Start date is required' })}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200"
+                  disabled={!dataAvailability}
                 />
-                {errors.dataPath && <p className="mt-1 text-sm text-red-600">{errors.dataPath.message}</p>}
+                {errors.startDate && <p className="mt-1 text-sm text-red-600">{errors.startDate.message}</p>}
               </div>
+
+              <div>
+                <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  End Date
+                </label>
+                <input
+                  type="date"
+                  {...register('endDate', { required: 'End date is required' })}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200"
+                  disabled={!dataAvailability}
+                />
+                {errors.endDate && <p className="mt-1 text-sm text-red-600">{errors.endDate.message}</p>}
+              </div>
+
+              {dataAvailability && (
+                <div className="sm:col-span-2 text-sm text-gray-500 dark:text-gray-400">
+                  Data available from {new Date(dataAvailability.earliest_data).toLocaleDateString()} to {new Date(dataAvailability.latest_data).toLocaleDateString()}
+                  ({dataAvailability.total_records.toLocaleString()} records)
+                </div>
+              )}
             </div>
           </div>
 

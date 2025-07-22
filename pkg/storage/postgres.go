@@ -738,6 +738,94 @@ func (p *PostgresStorage) GetAvailableTimeframes() ([]string, error) {
 	return timeframes, nil
 }
 
+func (p *PostgresStorage) GetSymbolDetails() ([]Symbol, error) {
+	query := `
+		SELECT name, description, margin, point_price, tick_size, contract_size, currency, exchange, active
+		FROM symbols
+		WHERE active = true
+		ORDER BY name
+	`
+	
+	rows, err := p.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query symbols: %w", err)
+	}
+	defer rows.Close()
+	
+	var symbols []Symbol
+	for rows.Next() {
+		var s Symbol
+		err := rows.Scan(
+			&s.Name, &s.Description, &s.Margin, &s.PointPrice, 
+			&s.TickSize, &s.ContractSize, &s.Currency, &s.Exchange, &s.Active,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan symbol: %w", err)
+		}
+		symbols = append(symbols, s)
+	}
+	
+	return symbols, rows.Err()
+}
+
+func (p *PostgresStorage) GetTimeframeDetails() ([]Timeframe, error) {
+	query := `
+		SELECT value, description, interval_seconds, active
+		FROM timeframes
+		WHERE active = true
+		ORDER BY interval_seconds
+	`
+	
+	rows, err := p.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query timeframes: %w", err)
+	}
+	defer rows.Close()
+	
+	var timeframes []Timeframe
+	for rows.Next() {
+		var tf Timeframe
+		err := rows.Scan(&tf.Value, &tf.Description, &tf.IntervalSeconds, &tf.Active)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan timeframe: %w", err)
+		}
+		timeframes = append(timeframes, tf)
+	}
+	
+	return timeframes, rows.Err()
+}
+
+func (p *PostgresStorage) GetSymbolDataAvailability(symbol string) (*DataAvailability, error) {
+	query := `
+		SELECT 
+			symbol,
+			MIN(time) as earliest_data,
+			MAX(time) as latest_data,
+			COUNT(*) as total_records,
+			EXTRACT(EPOCH FROM (MAX(time) - MIN(time)) / NULLIF(COUNT(DISTINCT DATE_TRUNC('hour', time)) - 1, 0))::INTEGER as avg_interval_seconds
+		FROM ohlc_data
+		WHERE symbol = $1
+		GROUP BY symbol
+	`
+	
+	var da DataAvailability
+	err := p.db.QueryRow(query, symbol).Scan(
+		&da.Symbol,
+		&da.EarliestData,
+		&da.LatestData,
+		&da.TotalRecords,
+		&da.AvgIntervalSec,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil // No data available
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to query data availability: %w", err)
+	}
+	
+	return &da, nil
+}
+
 func (p *PostgresStorage) Close() error {
 	return p.db.Close()
 }

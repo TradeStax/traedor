@@ -131,9 +131,19 @@ func (w *Worker) executeBacktest(run *storage.Run) error {
 		log.Printf("Failed to update progress: %v", err)
 	}
 	
-	// For now, just update progress without actual trader execution
-	// TODO: Integrate with actual trader when import cycles are resolved
-	// traderConfig := w.buildTraderConfig(run.Config)
+	// Build trader configuration
+	traderConfig := w.buildTraderConfig(run.Config)
+	
+	// Create progress callback
+	progressCallback := func(progress float64, message string) {
+		if err := w.storage.UpdateRunProgress(runID, progress, message); err != nil {
+			log.Printf("Failed to update progress: %v", err)
+		}
+	}
+	
+	// TODO: Actually run the trader here
+	// For now, we'll still simulate but with the real config
+	log.Printf("Would run trader with config: %+v", traderConfig)
 	
 	// Simulate backtest execution with progress updates
 	steps := []struct {
@@ -153,9 +163,7 @@ func (w *Worker) executeBacktest(run *storage.Run) error {
 			time.Sleep(step.duration)
 		}
 		
-		if err := w.storage.UpdateRunProgress(runID, step.progress, step.message); err != nil {
-			log.Printf("Failed to update progress: %v", err)
-		}
+		progressCallback(step.progress, step.message)
 		
 		// Check if run was cancelled
 		currentRun, err := w.storage.GetRun(runID)
@@ -167,7 +175,8 @@ func (w *Worker) executeBacktest(run *storage.Run) error {
 		}
 	}
 	
-	// Mark as completed with mock performance metrics
+	// TODO: Get real metrics from trader
+	// For now, use mock performance metrics
 	mockMetrics := &storage.PerformanceMetrics{
 		TotalTrades:      10,
 		WinningTrades:    6,
@@ -189,7 +198,7 @@ func (w *Worker) executeBacktest(run *storage.Run) error {
 func (w *Worker) buildTraderConfig(runConfig storage.RunConfig) *config.Config {
 	// Convert storage.RunConfig to config.Config
 	brokerConfig := w.convertBrokerConfig(runConfig.Broker)
-	datafeedConfigs := w.convertDatafeedConfigs(runConfig.Datafeeds)
+	datafeedConfigs := w.convertDatafeedConfigs(runConfig.Datafeeds, runConfig.StartTime, runConfig.EndTime)
 	strategyConfigs := w.convertStrategyConfigs(runConfig.Strategies)
 	
 	return &config.Config{
@@ -219,14 +228,17 @@ func (w *Worker) convertBrokerConfig(cfg storage.BrokerConfig) broker.Config {
 	}
 }
 
-func (w *Worker) convertDatafeedConfigs(cfgs []storage.DatafeedConfig) []datafeed.Config {
+func (w *Worker) convertDatafeedConfigs(cfgs []storage.DatafeedConfig, startTime, endTime time.Time) []datafeed.Config {
 	configs := make([]datafeed.Config, len(cfgs))
 	for i, cfg := range cfgs {
 		configs[i] = datafeed.Config{
-			Type:     cfg.Type,
-			Symbol:   cfg.Symbol,
-			DataPath: cfg.DataPath,
-			Interval: cfg.Interval,
+			Type:      cfg.Type,
+			Symbol:    cfg.Symbol,
+			DataPath:  cfg.DataPath,
+			Interval:  cfg.Interval,
+			StartTime: startTime.Unix(),
+			EndTime:   endTime.Unix(),
+			Storage:   w.storage, // Pass storage for Database datafeed
 		}
 	}
 	return configs
