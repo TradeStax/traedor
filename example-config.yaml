@@ -21,14 +21,14 @@ AuthConfig:
   # CallbackURL: "https://127.0.0.1/callback"
 
 # Datafeed configuration
-# For Futures testing, us "SC"
+# For historical data testing, use "CSV"
 # Required Fields
-# Type - Type of datafeed, in most cases "SC"
+# Type - Type of datafeed, use "CSV" for file data, "Database" for stored data
 # Symbol - Symbol name, just used for logging
-# DataPath - Path to data file
+# DataPath - Path to data file (for CSV type)
 # Interval - delay used in loop, in most cases "0ns" is fine, this is instanteous
 Datafeeds:
-  - Type: "SC"
+  - Type: "CSV"
     Symbol: "/MES"
     DataPath: "./data/MESH23_FUT_CME.txt"
     Interval: "0ns"
@@ -69,16 +69,12 @@ Broker:
     PointPrice: 5
 
 # Strategy Configuration
-# Type - For now "SC" is recommended but you can also pick from "RSI", "MACD", "SMA"
+# Type - Available strategies: "RSI", "MACD", "SMA"
 # Symbol - used for logging
-# Params - used for SC strategy
-# DataPath - Patch to Sierra Chart studies file
-# Values - Values to use from studies file
-# Timeframe - timeframe of studies file
+# Params - strategy-specific parameters
 Strategy:
-  - Type: "SC"
+  - Type: "SMA"
     Symbol: "/MES"
     Params:
-      DataPath: "./data/MESH23_FUT_CME-1Min.txt"
-      Values: ["12B"]
-      Timeframe: "1m"
+      ShortPeriod: 10
+      LongPeriod: 20

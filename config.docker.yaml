@@ -17,9 +17,8 @@ AuthConfig:
 
 # Example datafeed configuration (adjust paths as needed)
 Datafeeds:
-  - Type: "SC"
+  - Type: "Database"
     Symbol: "/MES"
-    DataPath: "./data/MESH23_FUT_CME.txt"
     Interval: "0ns"
 
 # Broker Configuration
@@ -37,9 +36,8 @@ Broker:
 
 # Strategy Configuration
 Strategy:
-  - Type: "SC"
+  - Type: "SMA"
     Symbol: "/MES"
     Params:
-      DataPath: "./data/MESH23_FUT_CME-1Min.txt"
-      Values: ["12B"]
-      Timeframe: "1m"
+      ShortPeriod: 10
+      LongPeriod: 20

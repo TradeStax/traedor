@@ -41,7 +41,7 @@ services:
       - traedor-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/api/health"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "-O", "/dev/null", "http://localhost:8080/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -61,6 +61,11 @@ services:
     networks:
       - traedor-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "node --eval \"require('http').get('http://127.0.0.1:3000', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) }).on('error', () => { process.exit(1) })\""]
+      interval: 30s
+      timeout: 3s  
+      retries: 3
 
   # Redis for caching (optional, for future enhancements)
   redis:

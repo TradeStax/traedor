@@ -105,8 +105,8 @@ export default function RunsPage() {
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-semibold text-gray-900">Backtest Runs</h1>
-            <p className="mt-1 text-sm text-gray-600">
+            <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Backtest Runs</h1>
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
               Manage and monitor your trading strategy backtests
             </p>
           </div>
@@ -121,25 +121,25 @@ export default function RunsPage() {
         {/* Filters */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div>
-            <label htmlFor="search" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="search" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
               Search
             </label>
             <input
               type="text"
               id="search"
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+              className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
               placeholder="Search runs..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
           <div>
-            <label htmlFor="status" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="status" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
               Status
             </label>
             <select
               id="status"
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+              className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
             >
@@ -153,13 +153,13 @@ export default function RunsPage() {
             </select>
           </div>
           <div>
-            <label htmlFor="symbol" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="symbol" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
               Symbol
             </label>
             <input
               type="text"
               id="symbol"
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+              className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
               placeholder="e.g., ES, NQ"
               value={symbolFilter}
               onChange={(e) => setSymbolFilter(e.target.value)}
@@ -168,61 +168,79 @@ export default function RunsPage() {
         </div>
 
         {/* Runs Table */}
-        <div className="card overflow-hidden">
+        <div className="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-600">
+              <thead className="bg-gray-50 dark:bg-gray-700">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                     Run
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                     Started
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                     Performance
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-600">
                 {runs.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
-                      No runs found. <Link href="/runs/new" className="text-primary-600 hover:text-primary-500">Create your first run</Link>
+                    <td colSpan={5} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
+                      No runs found. <Link href="/runs/new" className="text-primary-600 dark:text-primary-400 hover:text-primary-500">Create your first run</Link>
                     </td>
                   </tr>
                 ) : (
                   runs.map((run: Run) => (
-                    <tr key={run.id} className="hover:bg-gray-50">
+                    <tr key={run.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">
-                            {run.config.symbol} - {run.config.timeframe}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {run.id.substring(0, 8)}...
-                          </div>
+                        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                          {run.config.symbol} - {run.config.timeframe}
+                        </div>
+                        <div className="text-sm text-gray-500 dark:text-gray-400">
+                          {run.id.substring(0, 8)}...
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        <RunProgress run={run} showDetails={true} />
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white ${
+                            run.status === 'completed' ? 'bg-green-500' :
+                            run.status === 'running' ? 'bg-blue-500' :
+                            run.status === 'failed' ? 'bg-red-500' :
+                            run.status === 'cancelled' ? 'bg-gray-500' :
+                            run.status === 'queued' ? 'bg-yellow-500' :
+                            run.status === 'retrying' ? 'bg-orange-500' :
+                            'bg-gray-300'
+                          }`}
+                        >
+                          {run.status === 'pending' ? 'Pending' :
+                           run.status === 'queued' ? 'Queued' :
+                           run.status === 'running' ? 'Running' :
+                           run.status === 'completed' ? 'Completed' :
+                           run.status === 'failed' ? 'Failed' :
+                           run.status === 'cancelled' ? 'Cancelled' :
+                           run.status === 'retrying' ? 'Retrying' :
+                           run.status
+                          }
+                        </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                         {run.started_at ? format(new Date(run.started_at), 'MMM d, HH:mm') : '-'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                         {run.performance_metrics ? (
                           <div>
-                            <div className={`font-medium ${run.performance_metrics.return_percentage >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            <div className={`font-medium ${run.performance_metrics.return_percentage >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                               {formatPercentage(run.performance_metrics.return_percentage)}
                             </div>
-                            <div className="text-gray-500">
+                            <div className="text-gray-500 dark:text-gray-400">
                               {run.performance_metrics.total_trades} trades
                             </div>
                           </div>
@@ -230,29 +248,31 @@ export default function RunsPage() {
                           '-'
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                        <Link
-                          href={`/runs/${run.id}`}
-                          className="text-primary-600 hover:text-primary-900"
-                        >
-                          View
-                        </Link>
-                        {(run.status === 'running' || run.status === 'queued') && (
-                          <button
-                            onClick={() => handleCancelRun(run.id)}
-                            className="text-red-600 hover:text-red-900"
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <div className="flex flex-col space-y-1">
+                          <Link
+                            href={`/runs/${run.id}`}
+                            className="text-primary-600 dark:text-primary-400 hover:text-primary-900 dark:hover:text-primary-300"
                           >
-                            Cancel
-                          </button>
-                        )}
-                        {run.status === 'failed' && (
-                          <button
-                            onClick={() => handleRetryRun(run.id)}
-                            className="text-yellow-600 hover:text-yellow-900"
-                          >
-                            Retry
-                          </button>
-                        )}
+                            View
+                          </Link>
+                          {(run.status === 'running' || run.status === 'queued') && (
+                            <button
+                              onClick={() => handleCancelRun(run.id)}
+                              className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300 text-left"
+                            >
+                              Cancel
+                            </button>
+                          )}
+                          {run.status === 'failed' && (
+                            <button
+                              onClick={() => handleRetryRun(run.id)}
+                              className="text-yellow-600 dark:text-yellow-400 hover:text-yellow-900 dark:hover:text-yellow-300 text-left"
+                            >
+                              Retry
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -264,7 +284,7 @@ export default function RunsPage() {
 
         {/* Real-time indicator */}
         {hasActiveRuns && (
-          <div className="flex items-center justify-center text-sm text-gray-500">
+          <div className="flex items-center justify-center text-sm text-gray-500 dark:text-gray-400">
             <div className="flex items-center space-x-2">
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
               <span>Auto-refreshing for active runs</span>
@@ -275,3 +295,4 @@ export default function RunsPage() {
     </Layout>
   );
 }
+

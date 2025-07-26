@@ -36,8 +36,19 @@ export const runsApi = {
     return response.data;
   },
 
-  getTrades: async (runId: string) => {
-    const response = await api.get<Trade[]>(`/runs/${runId}/trades`);
+  getTrades: async (runId: string, limit?: number, offset?: number) => {
+    const params = new URLSearchParams();
+    if (limit) params.append('limit', limit.toString());
+    if (offset) params.append('offset', offset.toString());
+    
+    const response = await api.get<{
+      trades: Trade[];
+      pagination: {
+        total: number;
+        limit: number;
+        offset: number;
+      };
+    }>(`/runs/${runId}/trades?${params.toString()}`);
     return response.data;
   },
 
@@ -106,7 +117,9 @@ export const configApi = {
       latest_data: string;
       total_records: number;
       avg_interval_seconds: number;
-    }>(`/config/symbols/${symbol}/availability`);
+    }>('/config/symbols/availability', {
+      params: { symbol }
+    });
     return response.data;
   },
 };

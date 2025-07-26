@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 )
@@ -461,5 +462,325 @@ func (p *PostgresStorage) UpdateMarketDataFileTotalLines(fileID string, totalLin
 		return fmt.Errorf("failed to update total lines: %w", err)
 	}
 	
+	return nil
+}
+
+// ResetStuckImports resets all imports stuck in processing or pending state
+func (p *PostgresStorage) ResetStuckImports() (int, error) {
+	query := `
+		UPDATE market_data_files 
+		SET status = 'failed',
+		    status_message = 'Reset due to server restart',
+		    updated_at = NOW()
+		WHERE status IN ('processing', 'pending')
+	`
+	
+	result, err := p.db.Exec(query)
+	if err != nil {
+		return 0, fmt.Errorf("failed to reset stuck imports: %w", err)
+	}
+	
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	
+	return int(rowsAffected), nil
+}
+
+// GetStuckImports returns files that were in processing or pending state
+func (p *PostgresStorage) GetStuckImports() ([]*MarketDataFile, error) {
+	query := `
+		SELECT id, filename, file_path, file_size, file_hash, status, 
+		       status_message, row_count, imported_at, created_at, updated_at,
+		       progress_percentage, lines_processed, total_lines, processing_start_time,
+		       estimated_completion_time, processing_rate, current_batch, total_batches,
+		       last_processed_line_preview, error_count
+		FROM market_data_files
+		WHERE status IN ('processing', 'pending')
+		ORDER BY created_at ASC
+	`
+	
+	rows, err := p.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get stuck imports: %w", err)
+	}
+	defer rows.Close()
+	
+	var files []*MarketDataFile
+	for rows.Next() {
+		var f MarketDataFile
+		var statusMsg sql.NullString
+		var rowCount sql.NullInt64
+		var progressPercentage sql.NullInt64
+		var linesProcessed sql.NullInt64
+		var totalLines sql.NullInt64
+		var processingRate sql.NullFloat64
+		var currentBatch sql.NullInt64
+		var totalBatches sql.NullInt64
+		var linePreview sql.NullString
+		var errorCount sql.NullInt64
+		
+		err := rows.Scan(
+			&f.ID,
+			&f.Filename,
+			&f.FilePath,
+			&f.FileSize,
+			&f.FileHash,
+			&f.Status,
+			&statusMsg,
+			&rowCount,
+			&f.ImportedAt,
+			&f.CreatedAt,
+			&f.UpdatedAt,
+			&progressPercentage,
+			&linesProcessed,
+			&totalLines,
+			&f.ProcessingStartTime,
+			&f.EstimatedCompletionTime,
+			&processingRate,
+			&currentBatch,
+			&totalBatches,
+			&linePreview,
+			&errorCount,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan file: %w", err)
+		}
+		
+		if statusMsg.Valid {
+			f.StatusMessage = statusMsg.String
+		}
+		if rowCount.Valid {
+			f.RowCount = int(rowCount.Int64)
+		}
+		if progressPercentage.Valid {
+			f.ProgressPercentage = int(progressPercentage.Int64)
+		}
+		if linesProcessed.Valid {
+			f.LinesProcessed = linesProcessed.Int64
+		}
+		if totalLines.Valid {
+			f.TotalLines = totalLines.Int64
+		}
+		if processingRate.Valid {
+			f.ProcessingRate = processingRate.Float64
+		}
+		if currentBatch.Valid {
+			f.CurrentBatch = int(currentBatch.Int64)
+		}
+		if totalBatches.Valid {
+			f.TotalBatches = int(totalBatches.Int64)
+		}
+		if linePreview.Valid {
+			f.LastProcessedLinePreview = linePreview.String
+		}
+		if errorCount.Valid {
+			f.ErrorCount = int(errorCount.Int64)
+		}
+		
+		files = append(files, &f)
+	}
+	
+	return files, nil
+}
+
+// GetOHLCDataStream retrieves OHLC data in chunks to prevent memory issues
+func (p *PostgresStorage) GetOHLCDataStream(symbol string, startTime, endTime time.Time, chunkSize int, callback func([]OHLCData) error) error {
+	if chunkSize <= 0 {
+		chunkSize = 1000 // Default chunk size
+	}
+	
+	offset := 0
+	
+	for {
+		query := `
+			SELECT id, file_id, symbol, time, open, high, low, close,
+			       volume, trade_count, ohlc_avg, hlc_avg, hl_avg,
+			       bid_volume, ask_volume, created_at
+			FROM ohlc_data
+			WHERE symbol = $1 AND time >= $2 AND time <= $3
+			ORDER BY time ASC
+			LIMIT $4 OFFSET $5
+		`
+		
+		rows, err := p.db.Query(query, symbol, startTime, endTime, chunkSize, offset)
+		if err != nil {
+			return fmt.Errorf("failed to query OHLC data chunk: %w", err)
+		}
+		
+		var chunk []OHLCData
+		for rows.Next() {
+			var d OHLCData
+			err := rows.Scan(
+				&d.ID,
+				&d.FileID,
+				&d.Symbol,
+				&d.Time,
+				&d.Open,
+				&d.High,
+				&d.Low,
+				&d.Close,
+				&d.Volume,
+				&d.TradeCount,
+				&d.OHLCAvg,
+				&d.HLCAvg,
+				&d.HLAvg,
+				&d.BidVolume,
+				&d.AskVolume,
+				&d.CreatedAt,
+			)
+			if err != nil {
+				rows.Close()
+				return fmt.Errorf("failed to scan OHLC data: %w", err)
+			}
+			chunk = append(chunk, d)
+		}
+		rows.Close()
+		
+		// If no data in this chunk, we're done
+		if len(chunk) == 0 {
+			break
+		}
+		
+		// Process the chunk via callback
+		if err := callback(chunk); err != nil {
+			return fmt.Errorf("callback error: %w", err)
+		}
+		
+		// If we got less than chunkSize, we're done
+		if len(chunk) < chunkSize {
+			break
+		}
+		
+		// Clear the chunk to help GC (after checking length)
+		chunk = nil
+		
+		offset += chunkSize
+	}
+	
+	return nil
+}
+
+// GetExistingFileRecord checks if a file with the given hash already exists and returns the record
+func (p *PostgresStorage) GetExistingFileRecord(hash string) (*MarketDataFile, error) {
+	query := `
+		SELECT id, filename, file_path, file_size, file_hash, status, 
+		       status_message, row_count, imported_at, created_at, updated_at,
+		       progress_percentage, lines_processed, total_lines, processing_start_time,
+		       estimated_completion_time, processing_rate, current_batch, total_batches,
+		       last_processed_line_preview, error_count
+		FROM market_data_files
+		WHERE file_hash = $1
+		ORDER BY created_at DESC
+		LIMIT 1
+	`
+	
+	var f MarketDataFile
+	var statusMsg sql.NullString
+	var rowCount sql.NullInt64
+	var progressPercentage sql.NullInt64
+	var linesProcessed sql.NullInt64
+	var totalLines sql.NullInt64
+	var processingRate sql.NullFloat64
+	var currentBatch sql.NullInt64
+	var totalBatches sql.NullInt64
+	var linePreview sql.NullString
+	var errorCount sql.NullInt64
+	
+	err := p.db.QueryRow(query, hash).Scan(
+		&f.ID,
+		&f.Filename,
+		&f.FilePath,
+		&f.FileSize,
+		&f.FileHash,
+		&f.Status,
+		&statusMsg,
+		&rowCount,
+		&f.ImportedAt,
+		&f.CreatedAt,
+		&f.UpdatedAt,
+		&progressPercentage,
+		&linesProcessed,
+		&totalLines,
+		&f.ProcessingStartTime,
+		&f.EstimatedCompletionTime,
+		&processingRate,
+		&currentBatch,
+		&totalBatches,
+		&linePreview,
+		&errorCount,
+	)
+	
+	if err == sql.ErrNoRows {
+		return nil, nil // No existing record found
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get existing file record: %w", err)
+	}
+	
+	// Handle nullable fields
+	if statusMsg.Valid {
+		f.StatusMessage = statusMsg.String
+	}
+	if rowCount.Valid {
+		f.RowCount = int(rowCount.Int64)
+	}
+	if progressPercentage.Valid {
+		f.ProgressPercentage = int(progressPercentage.Int64)
+	}
+	if linesProcessed.Valid {
+		f.LinesProcessed = linesProcessed.Int64
+	}
+	if totalLines.Valid {
+		f.TotalLines = totalLines.Int64
+	}
+	if processingRate.Valid {
+		f.ProcessingRate = processingRate.Float64
+	}
+	if currentBatch.Valid {
+		f.CurrentBatch = int(currentBatch.Int64)
+	}
+	if totalBatches.Valid {
+		f.TotalBatches = int(totalBatches.Int64)
+	}
+	if linePreview.Valid {
+		f.LastProcessedLinePreview = linePreview.String
+	}
+	if errorCount.Valid {
+		f.ErrorCount = int(errorCount.Int64)
+	}
+	
+	return &f, nil
+}
+
+// CountOHLCDataByFileID returns the count of OHLC data records for a specific file ID
+func (p *PostgresStorage) CountOHLCDataByFileID(fileID string) (int64, error) {
+	query := `SELECT COUNT(*) FROM ohlc_data WHERE file_id = $1`
+	
+	var count int64
+	err := p.db.QueryRow(query, fileID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count OHLC data for file ID %s: %w", fileID, err)
+	}
+	
+	return count, nil
+}
+
+// DeleteOHLCDataByFileID deletes all OHLC data records for a specific file ID
+func (p *PostgresStorage) DeleteOHLCDataByFileID(fileID string) error {
+	query := `DELETE FROM ohlc_data WHERE file_id = $1`
+	
+	result, err := p.db.Exec(query, fileID)
+	if err != nil {
+		return fmt.Errorf("failed to delete OHLC data for file ID %s: %w", fileID, err)
+	}
+	
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	
+	log.Printf("Deleted %d OHLC records for file ID: %s", rowsAffected, fileID)
 	return nil
 }

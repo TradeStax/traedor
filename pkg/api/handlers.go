@@ -2,23 +2,28 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/tradestax/traedor/pkg/storage"
+	"github.com/tradestax/traedor/pkg/services"
 )
 
 type Server struct {
-	storage storage.IStorage
-	router  *mux.Router
+	storage    storage.IStorage
+	router     *mux.Router
+	importPool *services.ImportPool
 }
 
 func NewServer(store storage.IStorage) *Server {
 	s := &Server{
-		storage: store,
-		router:  mux.NewRouter(),
+		storage:    store,
+		router:     mux.NewRouter(),
+		importPool: services.NewImportPool(store),
 	}
 	s.setupRoutes()
 	return s
@@ -43,6 +48,7 @@ func (s *Server) setupRoutes() {
 	
 	// Signal definitions
 	api.HandleFunc("/signals", s.handleListSignals).Methods("GET", "OPTIONS")
+	api.HandleFunc("/signals/available", s.handleListSignals).Methods("GET", "OPTIONS")
 	api.HandleFunc("/signals", s.handleCreateSignal).Methods("POST", "OPTIONS")
 	api.HandleFunc("/signals/{id}", s.handleGetSignal).Methods("GET", "OPTIONS")
 	api.HandleFunc("/signals/{id}", s.handleUpdateSignal).Methods("PUT", "OPTIONS")
@@ -50,13 +56,14 @@ func (s *Server) setupRoutes() {
 	
 	// Configuration
 	api.HandleFunc("/config/symbols", s.handleGetSymbols).Methods("GET", "OPTIONS")
-	api.HandleFunc("/config/symbols/{symbol}/availability", s.handleGetSymbolDataAvailability).Methods("GET", "OPTIONS")
+	api.HandleFunc("/config/symbols/availability", s.handleGetSymbolDataAvailability).Methods("GET", "OPTIONS")
 	api.HandleFunc("/config/timeframes", s.handleGetTimeframes).Methods("GET", "OPTIONS")
 	
 	// Market data import
 	api.HandleFunc("/data/files", s.handleListDataFiles).Methods("GET", "OPTIONS")
 	api.HandleFunc("/data/files/failed", s.handleDeleteFailedImports).Methods("DELETE", "OPTIONS")
 	api.HandleFunc("/data/files/pending", s.handleDeletePendingImports).Methods("DELETE", "OPTIONS")
+	api.HandleFunc("/data/files/stuck", s.handleCleanupStuckImports).Methods("POST", "OPTIONS")
 	api.HandleFunc("/data/files/{id}", s.handleDeleteDataFile).Methods("DELETE", "OPTIONS")
 	api.HandleFunc("/data/files/{id}/retry", s.handleRetryDataFile).Methods("POST", "OPTIONS")
 	api.HandleFunc("/data/scan", s.handleScanDataFiles).Methods("POST", "OPTIONS")
@@ -69,6 +76,12 @@ func (s *Server) setupRoutes() {
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.router.ServeHTTP(w, r)
+}
+
+func (s *Server) Shutdown() {
+	if s.importPool != nil {
+		s.importPool.Stop()
+	}
 }
 
 // Run handlers
@@ -343,8 +356,13 @@ func (s *Server) handleGetTimeframes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetSymbolDataAvailability(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	symbol := vars["symbol"]
+	symbol := r.URL.Query().Get("symbol")
+	if symbol == "" {
+		writeErrorResponse(w, http.StatusBadRequest, "Symbol parameter is required")
+		return
+	}
+	
+	log.Printf("Checking data availability for symbol: %s", symbol)
 	
 	availability, err := s.storage.GetSymbolDataAvailability(symbol)
 	if err != nil {
@@ -353,7 +371,7 @@ func (s *Server) handleGetSymbolDataAvailability(w http.ResponseWriter, r *http.
 	}
 	
 	if availability == nil {
-		writeErrorResponse(w, http.StatusNotFound, "No data available for symbol")
+		writeErrorResponse(w, http.StatusNotFound, fmt.Sprintf("No market data available for symbol %s. Please ensure data has been imported for this symbol.", symbol))
 		return
 	}
 	

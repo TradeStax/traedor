@@ -1,14 +1,19 @@
 package broker
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"time"
 
 	"github.com/tradestax/traedor/pkg/broker/profit"
 	"github.com/tradestax/traedor/pkg/broker/stop"
-	"github.com/tradestax/traedor/pkg/datafeed"
+	"github.com/tradestax/traedor/pkg/types"
 )
+
+// ErrInsufficientBalance indicates the account doesn't have enough balance for a trade
+// This is a normal end condition for backtesting, not an actual error
+var ErrInsufficientBalance = errors.New("insufficient account balance")
 
 type FuturesBroker struct {
 	account       *Account
@@ -77,11 +82,7 @@ func NewFuturesBroker(c *Config) IBroker {
 		maxDrawdown:    0,
 	}
 	
-	// Record initial balance
-	fb.balanceHistory = append(fb.balanceHistory, BalancePoint{
-		Time:    time.Now(),
-		Balance: c.StartingBalance,
-	})
+	// Initial balance will be recorded when first data arrives
 	
 	return fb
 }
@@ -90,9 +91,20 @@ func (b *FuturesBroker) GetAccountStats() (*Account, error) {
 	return b.account, nil
 }
 
-func (b *FuturesBroker) AddData(d datafeed.Data) {
+func (b *FuturesBroker) AddData(d types.Data) {
 	b.currentPrice = d.Close
-	b.currentTime = d.Date
+	// Ensure currentTime is always in milliseconds
+	if d.Date < 1e12 { // If less than 1 trillion, it's likely in seconds
+		b.currentTime = d.Date * 1000
+	} else {
+		b.currentTime = d.Date
+	}
+	
+	// Record initial balance point on first data arrival
+	if len(b.balanceHistory) == 0 {
+		b.trackBalanceAndDrawdown()
+	}
+	
 	if b.currentTrade != nil {
 		// update max values for trade
 		b.updateTradeValues(d)
@@ -111,7 +123,7 @@ func (b *FuturesBroker) AddData(d datafeed.Data) {
 			}
 		}
 		// close all trades based on blackout period
-		now := time.Unix(d.Date, 0)
+		now := time.Unix(b.currentTime/1000, 0)
 		if isBlackout(now.In(b.blackoutTimes.TimeZone), b.blackoutTimes.StartTime, b.blackoutTimes.EndTime) {
 			b.closePosition()
 			log.Println("Broker closed trade due to blackout times")
@@ -124,7 +136,7 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 	if t.Operation == None {
 		return nil
 	}
-	tradeTime := time.Unix(t.Time, 0)
+	tradeTime := time.Unix(t.Time/1000, 0)
 	if _, week := tradeTime.ISOWeek(); week != b.week {
 		b.account.WeeklyWithdrawl()
 		b.week = week
@@ -150,7 +162,8 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 		}
 		if b.currentTrade == nil {
 			if !b.validTrade(&t) {
-				return fmt.Errorf("Failed to create Buy: Insufficient account balance")
+				log.Printf("Cannot create Buy trade: %v", ErrInsufficientBalance)
+				return ErrInsufficientBalance
 			}
 			log.Printf("Broker Create Buy: Symbol: %v Price: %.2f Quantity: %d\n", t.Symbol, b.currentPrice, tradeQ)
 			b.account.availableBalance -= (float64(tradeQ) * b.margin)
@@ -158,6 +171,8 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 			b.account.balance -= fee
 			b.currentTrade = &t
 			b.currentTrade.Quantity = tradeQ
+			b.currentTrade.Time = b.currentTime
+			b.currentTrade.OpenTime = b.currentTime
 			// slippage
 			b.currentTrade.Price = b.currentPrice + b.config.OpenSlippage
 			b.currentTrade.OpenPrice = b.currentTrade.Price
@@ -178,6 +193,8 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 			}
 			b.currentTrade.Profits = tradeProfits
 			log.Printf("Updated Available Balance: %.2f\n", b.account.availableBalance)
+			// Track balance after opening trade
+			b.trackBalanceAndDrawdown()
 		}
 	case Sell:
 		if b.currentTrade != nil && b.currentTrade.Operation == Buy {
@@ -186,7 +203,8 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 		}
 		if b.currentTrade == nil {
 			if !b.validTrade(&t) {
-				return fmt.Errorf("Failed to create Sell: Insufficient account balance")
+				log.Printf("Cannot create Sell trade: %v", ErrInsufficientBalance)
+				return ErrInsufficientBalance
 			}
 			log.Printf("Broker Create Sell: Symbol %v Price: %.2f Quantity: %d\n", t.Symbol, b.currentPrice, tradeQ)
 			b.account.availableBalance -= (float64(tradeQ) * b.margin)
@@ -194,6 +212,8 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 			b.account.balance -= fee
 			b.currentTrade = &t
 			b.currentTrade.Quantity = tradeQ
+			b.currentTrade.Time = b.currentTime
+			b.currentTrade.OpenTime = b.currentTime
 			// slippage
 			b.currentTrade.Price = b.currentPrice - b.config.OpenSlippage
 			b.currentTrade.OpenPrice = b.currentTrade.Price
@@ -214,6 +234,8 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 			}
 			b.currentTrade.Profits = tradeProfits
 			log.Printf("Updated Available Balance: %.2f\n", b.account.availableBalance)
+			// Track balance after opening trade
+			b.trackBalanceAndDrawdown()
 		}
 	default:
 		//fmt.Println("Broker No indicator")
@@ -247,7 +269,7 @@ func (b *FuturesBroker) updateBalance() {
 	b.account.availableBalance -= fee
 	b.account.balance -= fee
 	b.currentTrade.Net = net
-	log.Printf("Close trade at %v\n", time.Unix(b.currentTime, 0))
+	log.Printf("Close trade at %v\n", time.Unix(b.currentTime/1000, 0))
 	
 	// Track balance history and drawdown
 	b.trackBalanceAndDrawdown()
@@ -267,7 +289,7 @@ func (b *FuturesBroker) closePosition() {
 	log.Printf("Updated Balance: %.2f Available Balance: %.2f\n", b.account.balance, b.account.availableBalance)
 }
 
-func (b *FuturesBroker) updateTradeValues(d datafeed.Data) {
+func (b *FuturesBroker) updateTradeValues(d types.Data) {
 	currDiff := d.Close - b.currentTrade.Price
 	if b.currentTrade.Operation == Sell {
 		currDiff = currDiff * -1
@@ -285,7 +307,7 @@ func (b *FuturesBroker) updateTradeValues(d datafeed.Data) {
 	}
 	
 	// Calculate MFE and MAE as percentages
-	if b.currentTrade.Price > 0 {
+	if b.currentTrade.Price != 0 && b.pointPrice != 0 {
 		// Calculate percentage based on points, not dollars  
 		// MFE and MAE are in dollars, so convert back to points for percentage calculation
 		mfePoints := b.currentTrade.MFE / b.pointPrice
@@ -303,6 +325,12 @@ func (b *FuturesBroker) validTrade(t *Trade) bool {
 }
 
 func (b *FuturesBroker) Summary() {
+	// Close any open trades before generating summary
+	if b.currentTrade != nil {
+		log.Println("Closing open trade at end of backtest")
+		b.closePosition()
+	}
+	
 	WriteTradesToFile(b.output, b.trades)
 	log.Printf("Number of wins: %v\n", b.wins)
 	log.Printf("Cumulative win amount: $%v\n", b.cumWin)
@@ -310,9 +338,17 @@ func (b *FuturesBroker) Summary() {
 	log.Printf("Cumulative lose amount: $%v\n", b.cumLose)
 	log.Printf("Number of trades: %v\n", len(b.trades))
 	log.Printf("Net profit: $%v\n", (b.cumWin + b.cumLose))
-	log.Printf("Net profit percentage: %.02f%%\n", ((b.cumWin+b.cumLose)/b.cumWin)*100)
+	if b.cumWin > 0 {
+		log.Printf("Net profit percentage: %.02f%%\n", ((b.cumWin+b.cumLose)/b.cumWin)*100)
+	} else {
+		log.Printf("Net profit percentage: N/A (no winning trades)\n")
+	}
 	total := float64(b.wins + b.loses)
-	log.Printf("Accuracy: %.02f%%\n", (float64(b.wins)/total)*100)
+	if total > 0 {
+		log.Printf("Accuracy: %.02f%%\n", (float64(b.wins)/total)*100)
+	} else {
+		log.Printf("Accuracy: N/A (no trades)\n")
+	}
 }
 
 func (b *FuturesBroker) GetTrades() ([]*Trade, error) {

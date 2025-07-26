@@ -3,9 +3,12 @@ const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
   async rewrites() {
-    const apiUrl = process.env.NODE_ENV === 'production' 
-      ? 'http://backend:8080/api/:path*'
-      : 'http://localhost:8080/api/:path*';
+    // Use environment variable or default to backend service name
+    const backendHost = process.env.BACKEND_HOST || 'backend';
+    const backendPort = process.env.BACKEND_PORT || '8080';
+    const apiUrl = `http://${backendHost}:${backendPort}/api/:path*`;
+    
+    console.log('API rewrite configured to:', apiUrl);
     
     return [
       {

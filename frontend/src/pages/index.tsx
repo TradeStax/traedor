@@ -85,65 +85,47 @@ export default function HomePage() {
         {runs && runs.length > 0 && (
           <>
             {/* Desktop table view */}
-            <div className="hidden sm:block table-container">
-              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-600">
-                <thead className="table-header">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Symbol
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Timeframe
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Return %
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Started
-                    </th>
-                    <th className="relative px-6 py-3">
-                      <span className="sr-only">View</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="table-cell divide-y divide-gray-200 dark:divide-gray-600">
-                  {runs.map((run: Run) => (
-                    <tr key={run.id} className="table-row-hover">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">
-                        {run.config.symbol}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                        {run.config.timeframe}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(run.status)}`}>
-                          {run.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                        {run.performance_metrics ? (
-                          <span className={run.performance_metrics.return_percentage >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
-                            {formatNumber(run.performance_metrics.return_percentage)}%
-                          </span>
-                        ) : (
-                          '-'
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                        {format(new Date(run.started_at), 'MMM d, yyyy HH:mm')}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <Link href={`/runs/${run.id}`} className="text-primary-600 dark:text-primary-400 hover:text-primary-900 dark:hover:text-primary-300">
-                          View
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="hidden sm:block bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+              <div className="flex bg-gray-50 dark:bg-gray-700 py-3 px-6 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <div className="w-32">Symbol</div>
+                <div className="w-32">Timeframe</div>
+                <div className="w-32">Status</div>
+                <div className="w-32">Return %</div>
+                <div className="flex-1">Started</div>
+                <div className="w-20">View</div>
+              </div>
+              {runs.map((run: Run) => (
+                <div key={run.id} className="flex py-4 px-6 border-t border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700">
+                  <div className="w-32 text-sm font-medium text-gray-900 dark:text-gray-100">
+                    {run.config.symbol}
+                  </div>
+                  <div className="w-32 text-sm text-gray-500 dark:text-gray-400">
+                    {run.config.timeframe}
+                  </div>
+                  <div className="w-32">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(run.status)}`}>
+                      {run.status}
+                    </span>
+                  </div>
+                  <div className="w-32 text-sm text-gray-500 dark:text-gray-400">
+                    {run.performance_metrics ? (
+                      <span className={run.performance_metrics.return_percentage >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>
+                        {formatNumber(run.performance_metrics.return_percentage)}%
+                      </span>
+                    ) : (
+                      '-'
+                    )}
+                  </div>
+                  <div className="flex-1 text-sm text-gray-500 dark:text-gray-400">
+                    {format(new Date(run.started_at), 'MMM d, yyyy HH:mm')}
+                  </div>
+                  <div className="w-20 text-right text-sm font-medium">
+                    <Link href={`/runs/${run.id}`} className="text-primary-600 dark:text-primary-400 hover:text-primary-900 dark:hover:text-primary-300">
+                      View
+                    </Link>
+                  </div>
+                </div>
+              ))}
             </div>
 
             {/* Mobile card view */}

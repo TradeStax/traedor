@@ -1,9 +1,7 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -12,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/tradestax/traedor/pkg/importer"
 	"github.com/tradestax/traedor/pkg/storage"
 )
 
@@ -69,16 +66,8 @@ func (s *Server) handleImportDataFile(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		
-		// Start import asynchronously
-		go func() {
-			imp := importer.NewImporter(s.storage)
-			// Use background context for long-running imports, not HTTP request context
-			ctx := context.Background()
-			if err := imp.ImportFile(ctx, req.FilePath); err != nil {
-				// Error is logged in the file status
-				fmt.Printf("Import failed for %s: %v\n", req.FilePath, err)
-			}
-		}()
+		// Start import asynchronously using pool to prevent goroutine leaks
+		s.importPool.ImportFileAsync(req.FilePath)
 		
 		writeJSONResponse(w, http.StatusAccepted, map[string]string{
 			"message": "Import started",
@@ -217,17 +206,52 @@ func (s *Server) handleRetryDataFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	// Trigger import by creating a new importer instance
-	imp := importer.NewImporter(s.storage)
-	go func() {
-		// Use background context for long-running imports, not HTTP request context
-		ctx := context.Background()
-		if err := imp.ImportFile(ctx, targetFile.FilePath); err != nil {
-			fmt.Printf("Retry import failed for %s: %v\n", targetFile.FilePath, err)
-		}
-	}()
+	// Trigger retry import using pool to prevent goroutine leaks
+	s.importPool.ImportFileAsync(targetFile.FilePath)
 	
 	writeJSONResponse(w, http.StatusOK, map[string]string{
 		"message": "Import retry started successfully",
+	})
+}
+
+// handleCleanupStuckImports cleans up all imports stuck in processing/pending state
+func (s *Server) handleCleanupStuckImports(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErrorResponse(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	
+	// Get stuck imports first for reporting
+	stuckImports, err := s.storage.GetStuckImports()
+	if err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, "Failed to get stuck imports")
+		return
+	}
+	
+	if len(stuckImports) == 0 {
+		writeJSONResponse(w, http.StatusOK, map[string]interface{}{
+			"message": "No stuck imports found",
+			"count":   0,
+		})
+		return
+	}
+	
+	// Reset stuck imports
+	count, err := s.storage.ResetStuckImports()
+	if err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, "Failed to reset stuck imports")
+		return
+	}
+	
+	// Prepare response with details of what was cleaned up
+	var fileNames []string
+	for _, file := range stuckImports {
+		fileNames = append(fileNames, file.Filename)
+	}
+	
+	writeJSONResponse(w, http.StatusOK, map[string]interface{}{
+		"message":    "Stuck imports cleaned up successfully",
+		"count":      count,
+		"files":      fileNames,
 	})
 }

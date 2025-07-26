@@ -3,9 +3,8 @@ package storage
 import (
 	"time"
 
-	"github.com/tradestax/traedor/pkg/broker"
-	"github.com/tradestax/traedor/pkg/datafeed"
-	"github.com/tradestax/traedor/pkg/strategy/types"
+	"github.com/tradestax/traedor/pkg/types"
+	strategyTypes "github.com/tradestax/traedor/pkg/strategy/types"
 )
 
 type IStorage interface {
@@ -24,16 +23,18 @@ type IStorage interface {
 	CancelRun(runID string) error
 
 	// Trade management
-	SaveTrade(runID string, trade *broker.Trade) error
-	GetTrades(runID string) ([]*broker.Trade, error)
+	SaveTrade(runID string, trade *types.Trade) error
+	GetTrades(runID string) ([]*types.Trade, error)
+	GetTradesPaginated(runID string, limit, offset int) ([]*types.Trade, int, error)
 
 	// Signal management
 	SaveSignal(runID string, signal Signal) error
 	GetSignals(runID string) ([]*Signal, error)
+	GetSignalDefinitionIDByName(name string) (string, error)
 
 	// Tick data management
-	SaveTickData(data []datafeed.Data) error
-	GetTickData(symbol string, startTime, endTime time.Time) ([]datafeed.Data, error)
+	SaveTickData(data []types.Data) error
+	GetTickData(symbol string, startTime, endTime time.Time) ([]types.Data, error)
 
 	// Signal definitions
 	CreateSignalDefinition(def SignalDefinition) error
@@ -48,6 +49,7 @@ type IStorage interface {
 	UpdateFileProgress(progress ProgressUpdate) error
 	UpdateMarketDataFileTotalLines(fileID string, totalLines int64) error
 	FileAlreadyImported(hash string) (bool, error)
+	GetExistingFileRecord(hash string) (*MarketDataFile, error)
 	ListMarketDataFiles() ([]*MarketDataFile, error)
 	DeleteMarketDataFile(fileID string) error
 	DeleteFailedImports() (int, error)
@@ -55,12 +57,17 @@ type IStorage interface {
 	BulkInsertOHLCData(data []OHLCData) error
 	BulkInsertTechnicalIndicators(indicators []TechnicalIndicator) error
 	GetOHLCData(symbol string, startTime, endTime time.Time) ([]OHLCData, error)
+	GetOHLCDataStream(symbol string, startTime, endTime time.Time, chunkSize int, callback func([]OHLCData) error) error
 	GetTechnicalIndicators(symbol string, indicatorName string, startTime, endTime time.Time) ([]TechnicalIndicator, error)
 	GetAvailableSymbols() ([]string, error)
 	GetAvailableTimeframes() ([]string, error)
 	GetSymbolDetails() ([]Symbol, error)
 	GetTimeframeDetails() ([]Timeframe, error)
 	GetSymbolDataAvailability(symbol string) (*DataAvailability, error)
+	ResetStuckImports() (int, error)
+	GetStuckImports() ([]*MarketDataFile, error)
+	CountOHLCDataByFileID(fileID string) (int64, error)
+	DeleteOHLCDataByFileID(fileID string) error
 
 	// Cleanup
 	Close() error
@@ -173,21 +180,21 @@ type Signal struct {
 	RunID     string
 	Time      time.Time
 	Symbol    string
-	Direction types.Indicator
+	Direction strategyTypes.Indicator
 	Price     float64
 	SignalID  string // References SignalDefinition.ID
 	CreatedAt time.Time
 }
 
 type SignalDefinition struct {
-	ID          string
-	Name        string
-	Description string
-	Type        string // "technical", "ml", "custom"
-	Parameters  map[string]interface{}
-	Active      bool
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID          string                 `json:"id"`
+	Name        string                 `json:"name"`
+	Description string                 `json:"description"`
+	Type        string                 `json:"type"` // "technical", "ml", "custom"
+	Parameters  map[string]interface{} `json:"parameters"`
+	Active      bool                   `json:"active"`
+	CreatedAt   time.Time              `json:"created_at"`
+	UpdatedAt   time.Time              `json:"updated_at"`
 }
 
 type RunFilter struct {

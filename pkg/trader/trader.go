@@ -1,9 +1,10 @@
 package trader
 
 import (
+	"errors"
 	"fmt"
 	"log"
-	"time"
+	"runtime"
 
 	"github.com/tradestax/traedor/internal/config"
 	"github.com/tradestax/traedor/pkg/auth"
@@ -25,6 +26,7 @@ type Trader struct {
 	config        *config.Config
 	storage       storage.IStorage
 	runID         string
+	finalized     bool
 }
 
 func NewTrader(c *config.Config) *Trader {
@@ -77,15 +79,21 @@ func (t *Trader) Run() error {
 			log.Printf("Datafeed error: %v", err)
 			t.updateRunStatusFailed(err)
 			return fmt.Errorf("datafeed error: %w", err)
-		case newData := <-t.dataChan:
-			// Save tick data if storage is available
-			if t.storage != nil && t.runID != "" {
-				go func() {
-					if err := t.storage.SaveTickData([]datafeed.Data{newData}); err != nil {
-						log.Printf("Failed to save tick data: %v", err)
-					}
-				}()
+		case newData, ok := <-t.dataChan:
+			if !ok {
+				// Data channel closed, datafeed finished
+				log.Printf("Datafeed completed, finishing backtest")
+				return nil
 			}
+			// Save tick data if storage is available
+			// TODO: Fix tick data saving - currently causes partition and connection pool issues
+			// if t.storage != nil && t.runID != "" {
+			// 	go func() {
+			// 		if err := t.storage.SaveTickData([]datafeed.Data{newData}); err != nil {
+			// 			log.Printf("Failed to save tick data: %v", err)
+			// 		}
+			// 	}()
+			// }
 			
 			t.broker.AddData(newData)
 			err := t.strategy.AddData(newData)
@@ -97,20 +105,12 @@ func (t *Trader) Run() error {
 			newInd := <-t.indicatorChan
 			
 			// Save signal if storage is available
-			if t.storage != nil && t.runID != "" {
-				go func() {
-					signal := storage.Signal{
-						RunID:     t.runID,
-						Time:      time.Unix(newData.Date/1000, 0),
-						Symbol:    t.config.Broker.Symbol.Name,
-						Direction: newInd,
-						Price:     newData.Close,
-					}
-					if err := t.storage.SaveSignal(t.runID, signal); err != nil {
-						log.Printf("Failed to save signal: %v", err)
-					}
-				}()
-			}
+			// TODO: Fix signal saving - need to properly map strategy types to signal definition IDs
+			// if t.storage != nil && t.runID != "" {
+			// 	go func() {
+			// 		// Implementation commented out due to UUID and connection pool issues
+			// 	}()
+			// }
 			
 			trade := broker.Trade{
 				Symbol: t.config.Broker.Symbol.Name,
@@ -129,6 +129,15 @@ func (t *Trader) Run() error {
 			}
 			err = t.broker.SendTrade(trade)
 			if err != nil {
+				// Check if this is insufficient balance - treat as normal completion
+				if errors.Is(err, broker.ErrInsufficientBalance) {
+					log.Printf("Backtest ended due to insufficient balance - completing normally")
+					// Perform final cleanup and calculations before exiting
+					t.finalizeTradingSession()
+					return nil // Exit the function normally when account goes broke
+				}
+				
+				// For actual errors, fail the run
 				log.Printf("Broker error: %v", err)
 				t.updateRunStatusFailed(err)
 				return fmt.Errorf("broker error: %w", err)
@@ -146,7 +155,22 @@ func (t *Trader) updateRunStatusFailed(err error) {
 	}
 }
 
-func (t *Trader) Summary() {
+func (t *Trader) finalizeTradingSession() {
+	// Prevent double finalization
+	if t.finalized {
+		log.Printf("Trading session already finalized, skipping...")
+		return
+	}
+	t.finalized = true
+	
+	// Stop all datafeeds
+	for _, df := range t.data {
+		if err := df.Stop(); err != nil {
+			log.Printf("Error stopping datafeed: %v", err)
+		}
+	}
+	
+	// Close any open trades and perform final calculations
 	t.broker.Summary()
 	account, _ := t.broker.GetAccountStats()
 	finalBalance := account.Balance()
@@ -176,6 +200,43 @@ func (t *Trader) Summary() {
 			log.Printf("Failed to save performance metrics: %v", err)
 		}
 	}
+}
+
+func (t *Trader) Summary() {
+	t.finalizeTradingSession()
+}
+
+// Cleanup releases resources and stops background operations
+func (t *Trader) Cleanup() {
+	log.Printf("Starting trader cleanup...")
+	
+	// Stop all datafeeds
+	for _, df := range t.data {
+		if err := df.Stop(); err != nil {
+			log.Printf("Error stopping datafeed during cleanup: %v", err)
+		}
+	}
+	
+	// Clear all slice references to help GC
+	if t.data != nil {
+		for i := range t.data {
+			t.data[i] = nil
+		}
+		t.data = t.data[:0] // Keep capacity but zero length
+		t.data = nil       // Release the slice
+	}
+	
+	// Clear object references
+	t.broker = nil
+	t.strategy = nil
+	t.authHelper = nil
+	t.storage = nil
+	
+	// Force garbage collection to reclaim memory immediately
+	runtime.GC()
+	runtime.GC() // Run twice to ensure cleanup of finalizers
+	
+	log.Printf("Trader cleanup completed")
 }
 
 func (t *Trader) calculatePerformanceMetrics(trades []*broker.Trade, finalBalance, percentChange float64) *storage.PerformanceMetrics {

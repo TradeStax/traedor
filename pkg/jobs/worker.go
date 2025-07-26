@@ -9,9 +9,12 @@ import (
 
 	"github.com/tradestax/traedor/internal/config"
 	"github.com/tradestax/traedor/pkg/broker"
+	"github.com/tradestax/traedor/pkg/broker/profit"
+	"github.com/tradestax/traedor/pkg/broker/stop"
 	"github.com/tradestax/traedor/pkg/datafeed"
 	"github.com/tradestax/traedor/pkg/storage"
 	"github.com/tradestax/traedor/pkg/strategy/types"
+	"github.com/tradestax/traedor/pkg/trader"
 )
 
 type WorkerPool struct {
@@ -141,55 +144,39 @@ func (w *Worker) executeBacktest(run *storage.Run) error {
 		}
 	}
 	
-	// TODO: Actually run the trader here
-	// For now, we'll still simulate but with the real config
-	log.Printf("Would run trader with config: %+v", traderConfig)
+	// Create and run the actual trader
+	log.Printf("Starting trader with config: %+v", traderConfig)
+	progressCallback(20.0, "Initializing trader...")
 	
-	// Simulate backtest execution with progress updates
-	steps := []struct {
-		progress float64
-		message  string
-		duration time.Duration
-	}{
-		{20.0, "Loading market data...", 1 * time.Second},
-		{40.0, "Processing signals...", 2 * time.Second},
-		{60.0, "Executing trades...", 2 * time.Second},
-		{80.0, "Calculating metrics...", 1 * time.Second},
-		{100.0, "Completed successfully", 0},
-	}
+	traderInstance := trader.NewTraderWithStorage(traderConfig, w.storage, runID)
 	
-	for _, step := range steps {
-		if step.duration > 0 {
-			time.Sleep(step.duration)
+	// Ensure cleanup happens regardless of how the function exits
+	defer func() {
+		log.Printf("Cleaning up trader resources for run %s", runID)
+		traderInstance.Cleanup()
+	}()
+	
+	progressCallback(30.0, "Loading market data...")
+	
+	// Run the trader and wait for completion
+	err := traderInstance.Run()
+	if err != nil {
+		log.Printf("Trader failed: %v", err)
+		if updateErr := w.storage.UpdateRunStatus(runID, storage.RunStatusFailed, nil); updateErr != nil {
+			log.Printf("Failed to update run status to failed: %v", updateErr)
 		}
-		
-		progressCallback(step.progress, step.message)
-		
-		// Check if run was cancelled
-		currentRun, err := w.storage.GetRun(runID)
-		if err != nil {
-			return fmt.Errorf("failed to check run status: %w", err)
-		}
-		if currentRun.Status == storage.RunStatusCancelled {
-			return fmt.Errorf("run was cancelled")
-		}
+		return fmt.Errorf("trader execution failed: %w", err)
 	}
 	
-	// TODO: Get real metrics from trader
-	// For now, use mock performance metrics
-	mockMetrics := &storage.PerformanceMetrics{
-		TotalTrades:      10,
-		WinningTrades:    6,
-		LosingTrades:     4,
-		TotalProfit:      1000.0,
-		ReturnPercentage: 10.0,
-		WinRate:          60.0,
-		FinalBalance:     11000.0,
-	}
+	progressCallback(90.0, "Calculating performance metrics...")
 	
-	if err := w.storage.UpdateRunStatus(runID, storage.RunStatusCompleted, mockMetrics); err != nil {
-		return fmt.Errorf("failed to update completion status: %w", err)
-	}
+	// Run trader summary to calculate and save metrics
+	traderInstance.Summary()
+	
+	progressCallback(100.0, "Completed successfully")
+	
+	// The trader's Summary() method will handle updating the run status to completed
+	// with the real performance metrics, so we don't need to do it here
 	
 	log.Printf("Worker %s completed run %s successfully", w.id, runID)
 	return nil
@@ -200,6 +187,18 @@ func (w *Worker) buildTraderConfig(runConfig storage.RunConfig) *config.Config {
 	brokerConfig := w.convertBrokerConfig(runConfig.Broker)
 	datafeedConfigs := w.convertDatafeedConfigs(runConfig.Datafeeds, runConfig.StartTime, runConfig.EndTime)
 	strategyConfigs := w.convertStrategyConfigs(runConfig.Strategies)
+	
+	// Convert signals to strategies if no explicit strategies are provided
+	if len(strategyConfigs) == 0 && len(runConfig.Signals) > 0 {
+		strategyConfigs = make([]types.Config, len(runConfig.Signals))
+		for i, signal := range runConfig.Signals {
+			strategyConfigs[i] = types.Config{
+				Type:   signal,  // RSI, SMA, etc.
+				Symbol: runConfig.Symbol,
+				Params: types.Params{}, // Use default parameters
+			}
+		}
+	}
 	
 	return &config.Config{
 		AuthConfig: w.config.AuthConfig,
@@ -220,6 +219,14 @@ func (w *Worker) convertBrokerConfig(cfg storage.BrokerConfig) broker.Config {
 		TrailingStopAmount: cfg.TrailingStopAmount,
 		FeePerSide:         cfg.FeePerSide,
 		OpenSlippage:       cfg.OpenSlippage,
+		TradeQuantity:      1, // Default trade quantity
+		BlackoutTimes: broker.BlackoutTimesStrings{
+			StartTime: "23:59", // Default to no blackout
+			EndTime:   "23:59",
+			TimeZone:  "UTC",
+		},
+		Stops:   []stop.Config{},   // No stops by default
+		Profits: []profit.Config{}, // No profit targets by default
 		Symbol: broker.Symbol{
 			Name:       cfg.Symbol.Name,
 			Margin:     cfg.Symbol.Margin,

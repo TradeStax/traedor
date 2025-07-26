@@ -1,6 +1,7 @@
 package datafeed
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"time"
@@ -13,6 +14,8 @@ type Datafeed struct {
 	duration  time.Duration
 	startTime int64
 	endTime   int64
+	ctx       context.Context
+	cancel    context.CancelFunc
 }
 
 const testDataMax = 100
@@ -30,8 +33,6 @@ func (d *Datafeed) Start() {
 		}
 	case "CSV":
 		go d.csvDatafeed(d.duration)
-	case "SC":
-		go d.scDatafeed(d.duration)
 	default:
 		panic(fmt.Errorf("Invalid datafeed specified"))
 	}
@@ -43,6 +44,13 @@ func (d *Datafeed) GetDatafeed() chan Data {
 
 func (d *Datafeed) GetErrorChan() chan error {
 	return d.errorChan
+}
+
+func (d *Datafeed) Stop() error {
+	if d.cancel != nil {
+		d.cancel()
+	}
+	return nil
 }
 
 func (d *Datafeed) onesData(duration time.Duration) {

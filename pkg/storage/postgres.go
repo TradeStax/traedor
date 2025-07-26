@@ -8,12 +8,12 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
-	"github.com/tradestax/traedor/pkg/broker"
-	"github.com/tradestax/traedor/pkg/datafeed"
+	"github.com/tradestax/traedor/pkg/types"
 )
 
 type PostgresStorage struct {
 	db *sql.DB
+	signalDefCache map[string]string // Cache for signal definition name -> ID mapping
 }
 
 func NewPostgresStorage(connectionString string) (*PostgresStorage, error) {
@@ -22,11 +22,33 @@ func NewPostgresStorage(connectionString string) (*PostgresStorage, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
+	// Configure connection pool to prevent exhaustion
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(5 * time.Minute)
+	db.SetConnMaxIdleTime(1 * time.Minute)
+
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	return &PostgresStorage{db: db}, nil
+	storage := &PostgresStorage{
+		db: db,
+		signalDefCache: make(map[string]string),
+	}
+	
+	// Initialize signal definitions
+	if err := storage.InitializeSignalDefinitions(); err != nil {
+		log.Printf("Warning: Failed to initialize signal definitions: %v", err)
+		// Don't fail startup, just log the error
+	}
+
+	// Populate signal definition cache
+	if err := storage.populateSignalDefCache(); err != nil {
+		log.Printf("Warning: Failed to populate signal definition cache: %v", err)
+	}
+
+	return storage, nil
 }
 
 func (p *PostgresStorage) CreateRun(config RunConfig) (*Run, error) {
@@ -228,20 +250,23 @@ func (p *PostgresStorage) UpdateRunStatus(runID string, status RunStatus, metric
 	return nil
 }
 
-func (p *PostgresStorage) SaveTrade(runID string, trade *broker.Trade) error {
+func (p *PostgresStorage) SaveTrade(runID string, trade *types.Trade) error {
 	query := `
 		INSERT INTO trades (
 			run_id, symbol, operation, quantity, open_price, close_price,
-			open_time, close_time, net_profit, max_profit, max_drawdown
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			open_time, close_time, net_profit, max_profit, max_drawdown,
+			mfe, mae, mfe_percent, mae_percent
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 	`
 
 	closeTime := sql.NullTime{}
 	if trade.CloseTime > 0 {
 		closeTime.Valid = true
-		closeTime.Time = time.Unix(trade.CloseTime/1000, 0)
+		closeTime.Time = time.UnixMilli(trade.CloseTime)
 	}
 
+	openTimeToStore := time.UnixMilli(trade.OpenTime)
+	
 	_, err := p.db.Exec(query,
 		runID,
 		trade.Symbol,
@@ -249,11 +274,15 @@ func (p *PostgresStorage) SaveTrade(runID string, trade *broker.Trade) error {
 		trade.Quantity,
 		trade.OpenPrice,
 		trade.ClosePrice,
-		time.Unix(trade.OpenTime/1000, 0),
+		openTimeToStore,
 		closeTime,
 		trade.NetProfit,
 		trade.MaxProfit,
 		trade.MaxDrawdown,
+		trade.MFE,
+		trade.MAE,
+		trade.MFEPercent,
+		trade.MAEPercent,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to save trade: %w", err)
@@ -262,13 +291,15 @@ func (p *PostgresStorage) SaveTrade(runID string, trade *broker.Trade) error {
 	return nil
 }
 
-func (p *PostgresStorage) GetTrades(runID string) ([]*broker.Trade, error) {
+func (p *PostgresStorage) GetTrades(runID string) ([]*types.Trade, error) {
 	query := `
 		SELECT symbol, operation, quantity, open_price, close_price,
-			   open_time, close_time, net_profit, max_profit, max_drawdown
+			   open_time, close_time, net_profit, max_profit, max_drawdown,
+			   mfe, mae, mfe_percent, mae_percent
 		FROM trades
 		WHERE run_id = $1
 		ORDER BY open_time
+		LIMIT 5000
 	`
 
 	rows, err := p.db.Query(query, runID)
@@ -277,9 +308,10 @@ func (p *PostgresStorage) GetTrades(runID string) ([]*broker.Trade, error) {
 	}
 	defer rows.Close()
 
-	trades := []*broker.Trade{}
+	trades := []*types.Trade{}
 	for rows.Next() {
-		var trade broker.Trade
+		var trade types.Trade
+		var openTime time.Time
 		var closeTime sql.NullTime
 
 		err := rows.Scan(
@@ -288,24 +320,96 @@ func (p *PostgresStorage) GetTrades(runID string) ([]*broker.Trade, error) {
 			&trade.Quantity,
 			&trade.OpenPrice,
 			&trade.ClosePrice,
-			&trade.OpenTime,
+			&openTime,
 			&closeTime,
 			&trade.NetProfit,
 			&trade.MaxProfit,
 			&trade.MaxDrawdown,
+			&trade.MFE,
+			&trade.MAE,
+			&trade.MFEPercent,
+			&trade.MAEPercent,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan trade: %w", err)
 		}
 
+		// Convert time.Time to Unix milliseconds  
+		trade.OpenTime = openTime.UnixMilli()
+		
 		if closeTime.Valid {
-			trade.CloseTime = closeTime.Time.Unix() * 1000
+			trade.CloseTime = closeTime.Time.UnixMilli()
 		}
 
 		trades = append(trades, &trade)
 	}
 
 	return trades, nil
+}
+
+func (p *PostgresStorage) GetTradesPaginated(runID string, limit, offset int) ([]*types.Trade, int, error) {
+	// First get total count
+	countQuery := `SELECT COUNT(*) FROM trades WHERE run_id = $1`
+	var total int
+	err := p.db.QueryRow(countQuery, runID).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get trades count: %w", err)
+	}
+
+	// Then get paginated trades
+	query := `
+		SELECT symbol, operation, quantity, open_price, close_price,
+			   open_time, close_time, net_profit, max_profit, max_drawdown,
+			   mfe, mae, mfe_percent, mae_percent
+		FROM trades
+		WHERE run_id = $1
+		ORDER BY open_time
+		LIMIT $2 OFFSET $3
+	`
+
+	rows, err := p.db.Query(query, runID, limit, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get trades: %w", err)
+	}
+	defer rows.Close()
+
+	trades := []*types.Trade{}
+	for rows.Next() {
+		var trade types.Trade
+		var openTime time.Time
+		var closeTime sql.NullTime
+
+		err := rows.Scan(
+			&trade.Symbol,
+			&trade.Operation,
+			&trade.Quantity,
+			&trade.OpenPrice,
+			&trade.ClosePrice,
+			&openTime,
+			&closeTime,
+			&trade.NetProfit,
+			&trade.MaxProfit,
+			&trade.MaxDrawdown,
+			&trade.MFE,
+			&trade.MAE,
+			&trade.MFEPercent,
+			&trade.MAEPercent,
+		)
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to scan trade: %w", err)
+		}
+
+		// Convert time.Time to Unix milliseconds  
+		trade.OpenTime = openTime.UnixMilli()
+		
+		if closeTime.Valid {
+			trade.CloseTime = closeTime.Time.UnixMilli()
+		}
+
+		trades = append(trades, &trade)
+	}
+
+	return trades, total, nil
 }
 
 func (p *PostgresStorage) SaveSignal(runID string, signal Signal) error {
@@ -367,7 +471,7 @@ func (p *PostgresStorage) GetSignals(runID string) ([]*Signal, error) {
 	return signals, nil
 }
 
-func (p *PostgresStorage) SaveTickData(data []datafeed.Data) error {
+func (p *PostgresStorage) SaveTickData(data []types.Data) error {
 	if len(data) == 0 {
 		return nil
 	}
@@ -405,7 +509,7 @@ func (p *PostgresStorage) SaveTickData(data []datafeed.Data) error {
 	return tx.Commit()
 }
 
-func (p *PostgresStorage) GetTickData(symbol string, startTime, endTime time.Time) ([]datafeed.Data, error) {
+func (p *PostgresStorage) GetTickData(symbol string, startTime, endTime time.Time) ([]types.Data, error) {
 	query := `
 		SELECT time, price, volume, bid, ask
 		FROM tick_data
@@ -419,9 +523,9 @@ func (p *PostgresStorage) GetTickData(symbol string, startTime, endTime time.Tim
 	}
 	defer rows.Close()
 
-	data := []datafeed.Data{}
+	data := []types.Data{}
 	for rows.Next() {
-		var tick datafeed.Data
+		var tick types.Data
 		var tickTime time.Time
 
 		err := rows.Scan(
@@ -740,10 +844,11 @@ func (p *PostgresStorage) GetAvailableTimeframes() ([]string, error) {
 
 func (p *PostgresStorage) GetSymbolDetails() ([]Symbol, error) {
 	query := `
-		SELECT name, description, margin, point_price, tick_size, contract_size, currency, exchange, active
-		FROM symbols
-		WHERE active = true
-		ORDER BY name
+		SELECT DISTINCT s.name, s.description, s.margin, s.point_price, s.tick_size, s.contract_size, s.currency, s.exchange, s.active
+		FROM symbols s
+		INNER JOIN ohlc_data o ON s.name = o.symbol
+		WHERE s.active = true
+		ORDER BY s.name
 	`
 	
 	rows, err := p.db.Query(query)
@@ -770,10 +875,17 @@ func (p *PostgresStorage) GetSymbolDetails() ([]Symbol, error) {
 
 func (p *PostgresStorage) GetTimeframeDetails() ([]Timeframe, error) {
 	query := `
-		SELECT value, description, interval_seconds, active
-		FROM timeframes
-		WHERE active = true
-		ORDER BY interval_seconds
+		SELECT t.value, t.description, t.interval_seconds, t.active
+		FROM timeframes t
+		WHERE t.active = true
+		AND (
+			-- Include tick data if we have tick records
+			(t.value = 'tick' AND EXISTS (SELECT 1 FROM ohlc_data LIMIT 1))
+			OR
+			-- Include 30m timeframe - we know this exists from earlier analysis
+			(t.interval_seconds = 1800)
+		)
+		ORDER BY t.interval_seconds
 	`
 	
 	rows, err := p.db.Query(query)
@@ -796,31 +908,70 @@ func (p *PostgresStorage) GetTimeframeDetails() ([]Timeframe, error) {
 }
 
 func (p *PostgresStorage) GetSymbolDataAvailability(symbol string) (*DataAvailability, error) {
-	query := `
+	// Use a two-step approach for better performance:
+	// 1. Get basic stats (min, max, count) efficiently
+	// 2. Sample a subset of records to estimate interval
+	
+	log.Printf("GetSymbolDataAvailability called with symbol: %s", symbol)
+	
+	basicQuery := `
 		SELECT 
 			symbol,
 			MIN(time) as earliest_data,
 			MAX(time) as latest_data,
-			COUNT(*) as total_records,
-			EXTRACT(EPOCH FROM (MAX(time) - MIN(time)) / NULLIF(COUNT(DISTINCT DATE_TRUNC('hour', time)) - 1, 0))::INTEGER as avg_interval_seconds
+			COUNT(*) as total_records
 		FROM ohlc_data
 		WHERE symbol = $1
 		GROUP BY symbol
 	`
 	
 	var da DataAvailability
-	err := p.db.QueryRow(query, symbol).Scan(
+	err := p.db.QueryRow(basicQuery, symbol).Scan(
 		&da.Symbol,
 		&da.EarliestData,
 		&da.LatestData,
 		&da.TotalRecords,
-		&da.AvgIntervalSec,
 	)
 	if err == sql.ErrNoRows {
+		// Debug: Check what symbols we do have
+		var symbols []string
+		debugQuery := `SELECT DISTINCT symbol FROM ohlc_data LIMIT 10`
+		rows, debugErr := p.db.Query(debugQuery)
+		if debugErr == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var s string
+				if scanErr := rows.Scan(&s); scanErr == nil {
+					symbols = append(symbols, s)
+				}
+			}
+			log.Printf("No data found for symbol %s. Available symbols: %v", symbol, symbols)
+		}
 		return nil, nil // No data available
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to query data availability: %w", err)
+	}
+	
+	// Calculate average interval from a sample of records for performance
+	intervalQuery := `
+		WITH sample_data AS (
+			SELECT time, 
+			       LAG(time) OVER (ORDER BY time) as prev_time
+			FROM ohlc_data
+			WHERE symbol = $1
+			ORDER BY time
+			LIMIT 1000
+		)
+		SELECT COALESCE(AVG(EXTRACT(EPOCH FROM (time - prev_time))), 30*60)::INTEGER as avg_seconds
+		FROM sample_data
+		WHERE prev_time IS NOT NULL
+	`
+	
+	err = p.db.QueryRow(intervalQuery, symbol).Scan(&da.AvgIntervalSec)
+	if err != nil {
+		// If interval calculation fails, default to 30 minutes (common tick interval)
+		da.AvgIntervalSec = 1800
 	}
 	
 	return &da, nil

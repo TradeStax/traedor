@@ -47,32 +47,87 @@ func (i *Importer) ImportFile(ctx context.Context, filePath string) error {
 		return fmt.Errorf("failed to calculate file hash: %w", err)
 	}
 
-	// Check if file already imported
-	exists, err := i.storage.FileAlreadyImported(hash)
+	// Check if file already has a record (any status)
+	existingRecord, err := i.storage.GetExistingFileRecord(hash)
 	if err != nil {
-		return fmt.Errorf("failed to check file existence: %w", err)
+		return fmt.Errorf("failed to check existing file record: %w", err)
 	}
-	if exists {
-		return fmt.Errorf("file already imported")
-	}
+	
+	var fileID string
+	
+	if existingRecord != nil {
+		// File record exists - check status
+		switch existingRecord.Status {
+		case "completed":
+			return fmt.Errorf("file already imported successfully")
+		case "processing", "pending":
+			// Resume existing import
+			log.Printf("Resuming existing import for file: %s (ID: %s, Status: %s)", 
+				fileInfo.Name(), existingRecord.ID, existingRecord.Status)
+			fileID = existingRecord.ID
+			
+			// Check if data already exists for this file ID (resume scenario)
+			existingDataCount, err := i.storage.CountOHLCDataByFileID(fileID)
+			if err != nil {
+				log.Printf("Warning: failed to count existing OHLC data: %v", err)
+			} else if existingDataCount > 0 {
+				// Data exists from previous import attempt - delete it to avoid duplicates
+				log.Printf("Found %d existing OHLC records for file ID %s, deleting to prevent duplicates", existingDataCount, fileID)
+				if err := i.storage.DeleteOHLCDataByFileID(fileID); err != nil {
+					log.Printf("Warning: failed to delete existing OHLC data: %v", err)
+				}
+			}
+			
+			// Update status to processing and reset start time
+			err = i.storage.UpdateMarketDataFileStatus(fileID, "processing", "Import resumed")
+			if err != nil {
+				log.Printf("Warning: failed to update file status to processing: %v", err)
+			}
+		case "failed":
+			// Update existing failed record to retry
+			log.Printf("Retrying failed import for file: %s (ID: %s)", fileInfo.Name(), existingRecord.ID)
+			fileID = existingRecord.ID
+			
+			// Check if partial data exists from previous failed attempt
+			existingDataCount, err := i.storage.CountOHLCDataByFileID(fileID)
+			if err != nil {
+				log.Printf("Warning: failed to count existing OHLC data: %v", err)
+			} else if existingDataCount > 0 {
+				// Partial data exists from previous failed attempt - delete it to start fresh
+				log.Printf("Found %d existing OHLC records from failed import for file ID %s, deleting to start fresh", existingDataCount, fileID)
+				if err := i.storage.DeleteOHLCDataByFileID(fileID); err != nil {
+					log.Printf("Warning: failed to delete existing OHLC data: %v", err)
+				}
+			}
+			
+			// Reset the record for retry
+			err = i.storage.UpdateMarketDataFileStatus(fileID, "processing", "Import retried")
+			if err != nil {
+				log.Printf("Warning: failed to update file status to processing: %v", err)
+			}
+		default:
+			return fmt.Errorf("file has unknown status: %s", existingRecord.Status)
+		}
+	} else {
+		// No existing record - create new one
+		log.Printf("Creating new import record for file: %s", fileInfo.Name())
+		now := time.Now()
+		fileRecord := &storage.MarketDataFile{
+			Filename:             fileInfo.Name(),
+			FilePath:             filePath,
+			FileSize:             fileInfo.Size(),
+			FileHash:             hash,
+			Status:               "processing",
+			TotalLines:           0, // Will be updated as we stream
+			ProcessingStartTime:  &now,
+			ProgressPercentage:   0,
+			LinesProcessed:       0,
+		}
 
-	// Create file record for streaming import (no total lines needed)
-	now := time.Now()
-	fileRecord := &storage.MarketDataFile{
-		Filename:             fileInfo.Name(),
-		FilePath:             filePath,
-		FileSize:             fileInfo.Size(),
-		FileHash:             hash,
-		Status:               "processing",
-		TotalLines:           0, // Will be updated as we stream
-		ProcessingStartTime:  &now,
-		ProgressPercentage:   0,
-		LinesProcessed:       0,
-	}
-
-	fileID, err := i.storage.CreateMarketDataFile(fileRecord)
-	if err != nil {
-		return fmt.Errorf("failed to create file record: %w", err)
+		fileID, err = i.storage.CreateMarketDataFile(fileRecord)
+		if err != nil {
+			return fmt.Errorf("failed to create file record: %w", err)
+		}
 	}
 
 	// First, count the total lines for accurate progress tracking
@@ -144,6 +199,16 @@ func (i *Importer) importCSVFileStreaming(ctx context.Context, filePath string, 
 	timestampSequences := make(map[time.Time]int64)
 	batch := make([]storage.OHLCData, 0, batchSize)
 	
+	// Cache file info to avoid repeated DB queries
+	var totalLines int64 = 0
+	files, _ := i.storage.ListMarketDataFiles()
+	for _, f := range files {
+		if f.ID == fileID {
+			totalLines = f.TotalLines
+			break
+		}
+	}
+	
 	log.Printf("Starting streaming import for %s", symbol)
 
 
@@ -208,8 +273,20 @@ func (i *Importer) importCSVFileStreaming(ctx context.Context, filePath string, 
 			// Update progress every 1000 records with error handling
 			if rowCount%1000 == 0 {
 				log.Printf("Progress update: %d lines processed", rowCount)
-				if err := i.updateStreamingProgressSafe(fileID, rowCount, startTime, record); err != nil {
+				if err := i.updateStreamingProgressCached(fileID, rowCount, totalLines, startTime, record); err != nil {
 					log.Printf("Warning: Failed to update progress: %v", err)
+				}
+				
+				// Periodically clean up old timestamp sequences to prevent memory growth
+				if rowCount%10000 == 0 && len(timestampSequences) > 10000 {
+					// Keep only recent timestamps (last 5000 entries)
+					newMap := make(map[time.Time]int64, 5000)
+					for k, v := range timestampSequences {
+						if rowCount-int64(v) < 5000 {
+							newMap[k] = v
+						}
+					}
+					timestampSequences = newMap
 				}
 			}
 		}
@@ -231,6 +308,10 @@ func (i *Importer) importCSVFileStreaming(ctx context.Context, filePath string, 
 	if err != nil {
 		log.Printf("Warning: failed to update total lines: %v", err)
 	}
+
+	// Clear memory explicitly
+	timestampSequences = nil
+	batch = nil
 
 	log.Printf("Streaming import completed successfully - processed %d rows", rowCount)
 
@@ -409,6 +490,16 @@ func parseTimestamp(dateStr, timeStr string) (time.Time, error) {
 	
 	// Try dash format with shorter milliseconds
 	if t, err := time.Parse("2006-1-2 15:04:05.000", combined); err == nil {
+		return t, nil
+	}
+	
+	// Try slash format without milliseconds
+	if t, err := time.Parse("2006/1/2 15:04:05", combined); err == nil {
+		return t, nil
+	}
+	
+	// Try dash format without milliseconds
+	if t, err := time.Parse("2006-1-2 15:04:05", combined); err == nil {
 		return t, nil
 	}
 	
@@ -621,6 +712,71 @@ func (i *Importer) updateStreamingProgressSafe(fileID string, linesProcessed int
 				estimatedCompletion = time.Now().Add(time.Duration(remainingSeconds) * time.Second)
 			}
 			break
+		}
+	}
+
+	// Update the database with streaming progress
+	progressData := storage.ProgressUpdate{
+		FileID:                     fileID,
+		ProgressPercentage:         progressPercentage,
+		LinesProcessed:             linesProcessed,
+		ProcessingRate:             processingRate,
+		EstimatedCompletionTime:    estimatedCompletion,
+		CurrentBatch:               0,
+		TotalBatches:               0,
+		LastProcessedLinePreview:   linePreview,
+	}
+
+	// This is a background update, don't fail the import if it fails
+	if err := i.storage.UpdateFileProgress(progressData); err != nil {
+		return fmt.Errorf("failed to update progress in database: %w", err)
+	}
+	
+	log.Printf("Streaming progress: %d lines processed at %.1f lines/sec (%d%%)", linesProcessed, processingRate, progressPercentage)
+	return nil
+}
+
+// updateStreamingProgressCached updates progress using cached total lines to avoid DB queries
+func (i *Importer) updateStreamingProgressCached(fileID string, linesProcessed, totalLines int64, startTime time.Time, lastRecord []string) error {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Panic in updateStreamingProgressCached: %v", r)
+		}
+	}()
+
+	elapsed := time.Since(startTime)
+	
+	// Calculate processing rate (lines per second)
+	processingRate := float64(linesProcessed) / elapsed.Seconds()
+	
+	// Get a preview of the current line being processed
+	var linePreview string
+	if lastRecord != nil && len(lastRecord) > 0 {
+		// Show first few columns as preview
+		preview := make([]string, 0, 3)
+		for i, col := range lastRecord {
+			if i >= 3 { // Only show first 3 columns
+				break
+			}
+			preview = append(preview, col)
+		}
+		linePreview = strings.Join(preview, ", ")
+		if len(linePreview) > 100 {
+			linePreview = linePreview[:100] + "..."
+		}
+	}
+
+	// Calculate progress percentage using cached total lines
+	progressPercentage := 0
+	var estimatedCompletion time.Time
+	
+	if totalLines > 0 {
+		progressPercentage = int((linesProcessed * 100) / totalLines)
+		// Calculate estimated completion time
+		if processingRate > 0 {
+			remainingLines := totalLines - linesProcessed
+			remainingSeconds := float64(remainingLines) / processingRate
+			estimatedCompletion = time.Now().Add(time.Duration(remainingSeconds) * time.Second)
 		}
 	}
 

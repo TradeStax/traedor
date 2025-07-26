@@ -123,6 +123,11 @@ func (d *TDADatafeed) GetErrorChan() chan error {
 	return d.errorChan
 }
 
+func (d *TDADatafeed) Stop() error {
+	// TDA datafeed doesn't need special cleanup
+	return nil
+}
+
 // TODO:
 // Parse response and determine error case
 func (d *TDADatafeed) subscribe() error {

@@ -1,6 +1,7 @@
 package datafeed
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -30,8 +31,6 @@ func NewDatafeed(c *Config, ah auth.IAuthHelper, dc chan Data, ec chan error) ID
 		df = NewLocalDatafeed(c, dc, ec)
 	case "TDA":
 		df = NewTDADatafeed(c, ah, dc, ec)
-	case "SC":
-		df = NewLocalDatafeed(c, dc, ec)
 	case "Database":
 		if store, ok := c.Storage.(storage.IStorage); ok {
 			df = NewDBDatafeed(c, store, dc, ec)
@@ -49,6 +48,7 @@ func NewLocalDatafeed(c *Config, dc chan Data, ec chan error) *Datafeed {
 	if err != nil {
 		panic(err)
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Datafeed{
 		config:    c,
 		dataChan:  dc,
@@ -56,5 +56,7 @@ func NewLocalDatafeed(c *Config, dc chan Data, ec chan error) *Datafeed {
 		duration:  duration,
 		startTime: c.StartTime,
 		endTime:   c.EndTime,
+		ctx:       ctx,
+		cancel:    cancel,
 	}
 }
