@@ -11,6 +11,8 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/tradestax/traedor/pkg/storage"
 	"github.com/tradestax/traedor/pkg/services"
+	"github.com/tradestax/traedor/pkg/signals"
+	"github.com/tradestax/traedor/pkg/types"
 )
 
 type Server struct {
@@ -44,11 +46,12 @@ func (s *Server) setupRoutes() {
 	
 	// Run data
 	api.HandleFunc("/runs/{id}/trades", s.handleGetTrades).Methods("GET", "OPTIONS")
+	api.HandleFunc("/runs/{id}/trades/stream", s.handleStreamTrades).Methods("GET", "OPTIONS")
 	api.HandleFunc("/runs/{id}/signals", s.handleGetSignals).Methods("GET", "OPTIONS")
 	
 	// Signal definitions
 	api.HandleFunc("/signals", s.handleListSignals).Methods("GET", "OPTIONS")
-	api.HandleFunc("/signals/available", s.handleListSignals).Methods("GET", "OPTIONS")
+	api.HandleFunc("/signals/available", s.handleListAvailableSignals).Methods("GET", "OPTIONS")
 	api.HandleFunc("/signals", s.handleCreateSignal).Methods("POST", "OPTIONS")
 	api.HandleFunc("/signals/{id}", s.handleGetSignal).Methods("GET", "OPTIONS")
 	api.HandleFunc("/signals/{id}", s.handleUpdateSignal).Methods("PUT", "OPTIONS")
@@ -88,14 +91,153 @@ func (s *Server) Shutdown() {
 func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 	var config storage.RunConfig
 	if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
+		log.Printf("Failed to decode request body: %v", err)
 		writeErrorResponse(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
+	
+	log.Printf("Received create run request: %+v", config)
 	
 	// Validate the configuration
 	if config.Symbol == "" {
 		writeErrorResponse(w, http.StatusBadRequest, "Symbol is required")
 		return
+	}
+	
+	// Validate that the symbol exists in the database
+	symbolExists, err := s.storage.SymbolExists(config.Symbol)
+	if err != nil {
+		log.Printf("Error checking symbol existence: %v", err)
+		writeErrorResponse(w, http.StatusInternalServerError, "Failed to validate symbol")
+		return
+	}
+	if !symbolExists {
+		writeErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("Symbol '%s' not found in database", config.Symbol))
+		return
+	}
+	
+	// Handle signals with parameters (new format)
+	var signalIDs []string
+	if len(config.SignalsWithParams) > 0 {
+		for _, signalWithParams := range config.SignalsWithParams {
+			
+			var baseSignalDef storage.SignalDefinition
+			found := false
+			
+			// First, check if it's an existing signal definition ID
+			signalDefinitions, err := s.storage.GetSignalDefinitions()
+			if err != nil {
+				writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get signal definitions: %v", err))
+				return
+			}
+			
+			for _, def := range signalDefinitions {
+				if def.ID == signalWithParams.SignalDefinitionID || def.Name == signalWithParams.SignalDefinitionID {
+					baseSignalDef = def
+					found = true
+					break
+				}
+			}
+			
+			// If not found, check if it's a signal type (for available signal generators)
+			if !found {
+				generator, exists := signals.GetSignalGenerator(signalWithParams.SignalDefinitionID)
+				if exists {
+					// Create a base signal definition from the signal type
+					baseSignalDef = storage.SignalDefinition{
+						Name:        generator.GetName(),
+						Description: generator.GetDescription(),
+						Type:        signalWithParams.SignalDefinitionID,
+						Parameters:  generator.GetDefaultParameters(),
+						Active:      true,
+					}
+					found = true
+				}
+			}
+			
+			if !found {
+				writeErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("Signal definition or type '%s' not found", signalWithParams.SignalDefinitionID))
+				return
+			}
+			
+			// Create signal instance with merged parameters
+			mergedParams := make(map[string]interface{})
+			for k, v := range baseSignalDef.Parameters {
+				mergedParams[k] = v
+			}
+			for k, v := range signalWithParams.Parameters {
+				mergedParams[k] = v
+			}
+			
+			// Create a descriptive name based on parameters
+			instanceName := baseSignalDef.Name
+			if aggInterval, hasAgg := mergedParams["aggregation_interval"]; hasAgg {
+				instanceName = fmt.Sprintf("%s_%vm", baseSignalDef.Name, aggInterval)
+			}
+			instanceName = fmt.Sprintf("%s_%d", instanceName, time.Now().UnixNano())
+			
+			signalInstance := storage.SignalDefinition{
+				Name:        instanceName,
+				Description: baseSignalDef.Description,
+				Type:        baseSignalDef.Type,
+				Parameters:  mergedParams,
+				Active:      true,
+				CreatedAt:   time.Now(),
+				UpdatedAt:   time.Now(),
+			}
+			
+			// Create the signal instance and get the actual ID assigned by the database
+			log.Printf("Creating signal instance: %+v", signalInstance)
+			if err := s.storage.CreateSignalDefinition(signalInstance); err != nil {
+				log.Printf("Failed to create signal instance %s: %v", signalInstance.Name, err)
+				writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to create signal instance %s: %v", signalInstance.Name, err))
+				return
+			}
+			
+			// Get the actual ID that was assigned by the database
+			signalDefinitions, err = s.storage.GetSignalDefinitions()
+			if err != nil {
+				writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get updated signal definitions: %v", err))
+				return
+			}
+			
+			var actualInstanceID string
+			for _, def := range signalDefinitions {
+				if def.Name == instanceName {
+					actualInstanceID = def.ID
+					break
+				}
+			}
+			
+			if actualInstanceID == "" {
+				writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to find created signal instance %s", instanceName))
+				return
+			}
+			
+			signalIDs = append(signalIDs, actualInstanceID)
+		}
+		
+		// Use the created signal instance IDs
+		config.Signals = signalIDs
+	} else if len(config.SignalDefinitions) > 0 {
+		// Legacy: Create signal definitions if provided (for backward compatibility)
+		for _, signalDef := range config.SignalDefinitions {
+			// Generate unique ID for signal definition
+			signalDef.ID = fmt.Sprintf("%s_%d", signalDef.Name, time.Now().UnixNano())
+			signalDef.CreatedAt = time.Now()
+			signalDef.UpdatedAt = time.Now()
+			
+			// Create the signal definition
+			if err := s.storage.CreateSignalDefinition(signalDef); err != nil {
+				writeErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to create signal definition %s: %v", signalDef.Name, err))
+				return
+			}
+			
+			signalIDs = append(signalIDs, signalDef.ID)
+		}
+		
+		// Use the created signal IDs
+		config.Signals = signalIDs
 	}
 	
 	// Create the run (initially in pending status)
@@ -192,13 +334,110 @@ func (s *Server) handleGetTrades(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	runID := vars["id"]
 	
-	trades, err := s.storage.GetTrades(runID)
+	// Parse query parameters for pagination
+	limitStr := r.URL.Query().Get("limit")
+	offsetStr := r.URL.Query().Get("offset")
+	
+	limit := 100 // Default limit
+	offset := 0  // Default offset
+	
+	if limitStr != "" {
+		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
+			limit = parsedLimit
+		}
+	}
+	
+	if offsetStr != "" {
+		if parsedOffset, err := strconv.Atoi(offsetStr); err == nil && parsedOffset >= 0 {
+			offset = parsedOffset
+		}
+	}
+	
+	// Get paginated trades
+	trades, total, err := s.storage.GetTradesPaginated(runID, limit, offset)
 	if err != nil {
 		writeErrorResponse(w, http.StatusInternalServerError, "Failed to get trades")
 		return
 	}
 	
-	writeJSONResponse(w, http.StatusOK, trades)
+	// Create response in format expected by frontend
+	response := map[string]interface{}{
+		"trades": trades,
+		"pagination": map[string]interface{}{
+			"total":  total,
+			"limit":  limit,
+			"offset": offset,
+		},
+	}
+	
+	writeJSONResponse(w, http.StatusOK, response)
+}
+
+func (s *Server) handleStreamTrades(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	runID := vars["id"]
+	
+	log.Printf("Streaming all trades for run %s", runID)
+	
+	// Set headers for JSON streaming
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.WriteHeader(http.StatusOK)
+	
+	// Start JSON array
+	w.Write([]byte("{\"trades\":["))
+	
+	first := true
+	totalCount := 0
+	
+	// Stream trades using the callback approach
+	err := s.storage.StreamTrades(runID, func(trade *types.Trade) error {
+		totalCount++
+		
+		// Add comma separator for all trades except the first
+		if !first {
+			if _, err := w.Write([]byte(",")); err != nil {
+				return fmt.Errorf("failed to write separator: %w", err)
+			}
+		}
+		first = false
+		
+		// Marshal and write each trade
+		tradeJSON, err := json.Marshal(trade)
+		if err != nil {
+			return fmt.Errorf("failed to marshal trade: %w", err)
+		}
+		
+		if _, err := w.Write(tradeJSON); err != nil {
+			return fmt.Errorf("failed to write trade: %w", err)
+		}
+		
+		// Flush data to client immediately (streaming)
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		
+		return nil
+	})
+	
+	if err != nil {
+		log.Printf("Error streaming trades: %v", err)
+		// If we haven't written any trades yet, we can still write an error response
+		if first {
+			w.Write([]byte("]}"))
+			writeErrorResponse(w, http.StatusInternalServerError, "Failed to stream trades")
+			return
+		}
+		// If we've already started streaming, just close the array
+		w.Write([]byte("]}"))
+		return
+	}
+	
+	// Close JSON array and add metadata
+	metadata := fmt.Sprintf("],\"total\":%d}", totalCount)
+	w.Write([]byte(metadata))
+	
+	log.Printf("Successfully streamed %d trades for run %s", totalCount, runID)
 }
 
 func (s *Server) handleGetSignals(w http.ResponseWriter, r *http.Request) {
@@ -223,6 +462,29 @@ func (s *Server) handleListSignals(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	writeJSONResponse(w, http.StatusOK, signals)
+}
+
+func (s *Server) handleListAvailableSignals(w http.ResponseWriter, r *http.Request) {
+	// Get available signal types from the signal generators
+	availableTypes := signals.GetAvailableSignalGenerators()
+	result := make([]map[string]interface{}, len(availableTypes))
+
+	for i, signalType := range availableTypes {
+		generator, exists := signals.GetSignalGenerator(signalType)
+		if !exists {
+			continue
+		}
+		
+		result[i] = map[string]interface{}{
+			"id":          signalType,
+			"name":        generator.GetName(),
+			"type":        signalType,
+			"description": generator.GetDescription(),
+			"parameters":  generator.GetDefaultParameters(),
+		}
+	}
+
+	writeJSONResponse(w, http.StatusOK, result)
 }
 
 func (s *Server) handleCreateSignal(w http.ResponseWriter, r *http.Request) {

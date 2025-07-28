@@ -8,26 +8,38 @@ import { RunConfig } from '@/types';
 
 interface BacktestFormData {
   symbol: string;
-  timeframe: string;
   startDate: string;
   endDate: string;
   startingBalance: number;
   trailingStopAmount: number;
+  profitTarget: number;
   feePerSide: number;
   openSlippage: number;
   selectedSignals: string[];
 }
 
+interface SelectedSignal {
+  id: string;
+  name: string;
+  type: string;
+  baseSignalId: string;
+  parameters: Record<string, any>;
+}
+
 export default function NewBacktestPage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedSignals, setSelectedSignals] = useState<SelectedSignal[]>([]);
+  const [showSignalModal, setShowSignalModal] = useState(false);
+  const [selectedSignalForConfig, setSelectedSignalForConfig] = useState<any>(null);
+  const [signalParameters, setSignalParameters] = useState<Record<string, any>>({});
   
   const { register, handleSubmit, formState: { errors }, watch, setValue } = useForm<BacktestFormData>({
     defaultValues: {
       symbol: '/MES',
-      timeframe: '30m',
-      startingBalance: 1700,
+      startingBalance: 10000,
       trailingStopAmount: 10,
+      profitTarget: 20,
       feePerSide: 1,
       openSlippage: 0.25,
       selectedSignals: [],
@@ -42,10 +54,6 @@ export default function NewBacktestPage() {
     queryFn: configApi.getSymbols,
   });
 
-  const { data: timeframes, isLoading: isLoadingTimeframes } = useQuery({
-    queryKey: ['timeframes'],
-    queryFn: configApi.getTimeframes,
-  });
 
   const { data: availableSignals, isLoading: isLoadingSignals } = useQuery({
     queryKey: ['availableSignals'],
@@ -89,12 +97,20 @@ export default function NewBacktestPage() {
     
     // Debug form data
     console.log('Form data on submit:', data);
-    console.log('Available timeframes:', timeframes);
-    console.log('Current form timeframe value:', data.timeframe);
+    console.log('Selected signals:', selectedSignals);
+
+    // Prepare signals with their base definition IDs and parameters
+    const signalsWithParams = selectedSignals.map(signal => ({
+      signal_definition_id: signal.baseSignalId,
+      parameters: signal.parameters
+    }));
+
+    // Get symbol configuration
+    const symbolConfig = getSymbolConfig(data.symbol);
 
     const runConfig: RunConfig = {
       symbol: data.symbol,
-      timeframe: data.timeframe,
+      timeframe: 'tick',
       start_time: new Date(data.startDate).toISOString(),
       end_time: new Date(data.endDate).toISOString(),
       datafeeds: [
@@ -102,7 +118,7 @@ export default function NewBacktestPage() {
           type: 'Database',
           symbol: data.symbol,
           data_path: '',
-          interval: data.timeframe,
+          interval: 'tick',
         },
       ],
       broker: {
@@ -110,21 +126,20 @@ export default function NewBacktestPage() {
         starting_balance: Number(data.startingBalance),
         weekly_withdrawl: 0,
         trailing_stop_amount: Number(data.trailingStopAmount),
+        profit_target: Number(data.profitTarget),
         fee_per_side: Number(data.feePerSide),
         open_slippage: Number(data.openSlippage),
         symbol: {
           name: data.symbol,
-          margin: 0,
-          point_price: 0,
+          margin: symbolConfig.margin,
+          point_price: symbolConfig.pointPrice,
         },
       },
       strategies: [],
-      signals: data.selectedSignals,
+      signals_with_params: signalsWithParams,
     };
 
     console.log('Final run config being sent:', JSON.stringify(runConfig, null, 2));
-    console.log('Timeframe in config:', runConfig.timeframe);
-    console.log('Interval in datafeed:', runConfig.datafeeds[0].interval);
     createRunMutation.mutate(runConfig);
   };
 
@@ -144,13 +159,42 @@ export default function NewBacktestPage() {
     };
   };
 
-  const handleSignalSelection = (signalId: string, checked: boolean) => {
-    const currentSignals = watch('selectedSignals');
-    if (checked) {
-      setValue('selectedSignals', [...currentSignals, signalId]);
-    } else {
-      setValue('selectedSignals', currentSignals.filter(id => id !== signalId));
-    }
+  const openSignalModal = (signal: any) => {
+    setSelectedSignalForConfig(signal);
+    setSignalParameters({ ...signal.parameters });
+    setShowSignalModal(true);
+  };
+
+  const addSignalWithParameters = () => {
+    if (!selectedSignalForConfig) return;
+    
+    const newSignal: SelectedSignal = {
+      id: `${selectedSignalForConfig.id || selectedSignalForConfig.name}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      name: selectedSignalForConfig.name,
+      type: selectedSignalForConfig.type,
+      baseSignalId: selectedSignalForConfig.id || selectedSignalForConfig.name,
+      parameters: { ...signalParameters }
+    };
+    setSelectedSignals(prev => [...prev, newSignal]);
+    setShowSignalModal(false);
+    setSelectedSignalForConfig(null);
+    setSignalParameters({});
+  };
+
+  const removeSignal = (signalId: string) => {
+    setSelectedSignals(prev => prev.filter(s => s.id !== signalId));
+  };
+
+  const getParameterDescription = (key: string, defaultValue: any): string => {
+    const descriptions: Record<string, string> = {
+      'period': 'Number of periods to use for calculation',
+      'overbought_level': 'RSI level considered overbought (typically 70-80)',
+      'oversold_level': 'RSI level considered oversold (typically 20-30)',
+      'short_period': 'Number of periods for short moving average',
+      'long_period': 'Number of periods for long moving average',
+    };
+    
+    return descriptions[key] || `Default value: ${defaultValue}`;
   };
 
   return (
@@ -200,26 +244,24 @@ export default function NewBacktestPage() {
                 {errors.symbol && <p className="mt-1 text-sm text-red-600">{errors.symbol.message}</p>}
               </div>
 
-              <div>
-                <label htmlFor="timeframe" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Timeframe
-                </label>
-                <select
-                  {...register('timeframe', { required: 'Timeframe is required' })}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200"
-                  disabled={isLoadingTimeframes}
-                >
-                  {isLoadingTimeframes ? (
-                    <option>Loading timeframes...</option>
-                  ) : (
-                    timeframes?.map((tf) => (
-                      <option key={tf.value} value={tf.value}>
-                        {tf.description}
-                      </option>
-                    ))
-                  )}
-                </select>
-                {errors.timeframe && <p className="mt-1 text-sm text-red-600">{errors.timeframe.message}</p>}
+              <div className="sm:col-span-2">
+                <div className="rounded-md bg-blue-50 dark:bg-blue-900/20 p-3">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                        Tick Data
+                      </h3>
+                      <div className="mt-1 text-sm text-blue-700 dark:text-blue-300">
+                        All backtests are run using tick-level data for maximum accuracy.
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div>
@@ -311,19 +353,36 @@ export default function NewBacktestPage() {
 
               <div>
                 <label htmlFor="trailingStopAmount" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Trailing Stop Amount
+                  Trailing Stop Amount (points)
                 </label>
                 <input
                   type="number"
-                  step="0.01"
+                  step="0.25"
                   {...register('trailingStopAmount', { 
                     required: 'Trailing stop amount is required',
-                    min: { value: 0.1, message: 'Minimum trailing stop is 0.1' },
+                    min: { value: 0.25, message: 'Minimum trailing stop is 0.25 points' },
                     valueAsNumber: true
                   })}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200"
                 />
                 {errors.trailingStopAmount && <p className="mt-1 text-sm text-red-600">{errors.trailingStopAmount.message}</p>}
+              </div>
+
+              <div>
+                <label htmlFor="profitTarget" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Profit Target (points)
+                </label>
+                <input
+                  type="number"
+                  step="0.25"
+                  {...register('profitTarget', { 
+                    required: 'Profit target is required',
+                    min: { value: 0.25, message: 'Minimum profit target is 0.25 points' },
+                    valueAsNumber: true
+                  })}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200"
+                />
+                {errors.profitTarget && <p className="mt-1 text-sm text-red-600">{errors.profitTarget.message}</p>}
               </div>
 
               <div>
@@ -365,7 +424,9 @@ export default function NewBacktestPage() {
           <div className="card">
             <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">Signal Configuration</h2>
             
-            <div className="space-y-3">
+            {/* Available Signals */}
+            <div className="mb-6">
+              <h3 className="text-md font-medium text-gray-700 dark:text-gray-300 mb-3">Available Signals</h3>
               {isLoadingSignals ? (
                 <div className="flex items-center text-sm text-gray-500 dark:text-gray-400">
                   <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -375,20 +436,75 @@ export default function NewBacktestPage() {
                   Loading available signals...
                 </div>
               ) : (
-                availableSignals?.map((signal) => (
-                  <div key={signal.name} className="flex items-center">
-                    <input
-                      type="checkbox"
-                      id={signal.name}
-                      onChange={(e) => handleSignalSelection(signal.name, e.target.checked)}
-                      className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                    />
-                    <label htmlFor={signal.name} className="ml-3">
-                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{signal.name}</span>
-                      <span className="text-sm text-gray-500 dark:text-gray-400 ml-2">{signal.description}</span>
-                    </label>
-                  </div>
-                ))
+                <div className="grid grid-cols-1 gap-3">
+                  {availableSignals?.map((signal) => (
+                    <div key={signal.name} className="border rounded-lg p-4 dark:border-gray-600">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">{signal.name}</h4>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">{signal.description}</p>
+                        </div>
+                      </div>
+                      <div className="flex justify-end mt-3">
+                        <button
+                          type="button"
+                          onClick={() => openSignalModal(signal)}
+                          className="px-4 py-2 text-sm bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-300 rounded hover:bg-primary-200 dark:hover:bg-primary-900/50 font-medium"
+                        >
+                          Add Signal
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Selected Signals */}
+            <div>
+              <h3 className="text-md font-medium text-gray-700 dark:text-gray-300 mb-3">Selected Signals</h3>
+              {selectedSignals.length === 0 ? (
+                <p className="text-sm text-gray-500 dark:text-gray-400">No signals selected</p>
+              ) : (
+                <div className="space-y-3">
+                  {selectedSignals.map((signal) => (
+                    <div key={signal.id} className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                              {signal.name}
+                            </span>
+                            <span className="px-2 py-0.5 text-xs bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 rounded">
+                              {signal.type}
+                            </span>
+                            {signal.parameters.aggregation_interval && (
+                              <span className="px-2 py-0.5 text-xs bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 rounded">
+                                {signal.parameters.aggregation_interval}m bars
+                              </span>
+                            )}
+                          </div>
+                          {Object.keys(signal.parameters).length > 0 && (
+                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                              Parameters: {Object.entries(signal.parameters).map(([key, value]) => 
+                                `${key}=${value}`
+                              ).join(', ')}
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeSignal(signal.id)}
+                          className="ml-3 text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 p-1"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </div>
@@ -411,6 +527,126 @@ export default function NewBacktestPage() {
           </div>
         </form>
       </div>
+
+      {/* Signal Configuration Modal */}
+      {showSignalModal && selectedSignalForConfig && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                Configure {selectedSignalForConfig.name}
+              </h3>
+              <button
+                onClick={() => setShowSignalModal(false)}
+                className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+              </button>
+            </div>
+            
+            {/* Modal Body */}
+            <div className="p-4 space-y-4">
+              <div>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                  {selectedSignalForConfig.description}
+                </p>
+              </div>
+
+              {/* Aggregation Interval */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Time Aggregation
+                </label>
+                <select
+                  value={signalParameters.aggregation_interval || ''}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setSignalParameters(prev => ({
+                      ...prev,
+                      ...(value ? { aggregation_interval: parseInt(value) } : { aggregation_interval: undefined })
+                    }));
+                  }}
+                  className="w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm 
+                           bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100
+                           focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                >
+                  <option value="">Tick Data (no aggregation)</option>
+                  <option value="1">1 Minute Bars</option>
+                  <option value="5">5 Minute Bars</option>
+                  <option value="15">15 Minute Bars</option>
+                  <option value="30">30 Minute Bars</option>
+                  <option value="60">1 Hour Bars</option>
+                </select>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Choose time-based aggregation or use raw tick data
+                </p>
+              </div>
+
+              {/* Other Parameters */}
+              {Object.entries(selectedSignalForConfig.parameters || {}).map(([key, defaultValue]) => {
+                if (key === 'aggregation_interval') return null; // Already handled above
+                
+                const isNumber = typeof defaultValue === 'number';
+                const currentValue = signalParameters[key] ?? defaultValue;
+                
+                return (
+                  <div key={key}>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      {key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                    </label>
+                    <input
+                      type={isNumber ? 'number' : 'text'}
+                      value={currentValue}
+                      onChange={(e) => {
+                        const value = isNumber 
+                          ? (e.target.value === '' ? '' : parseFloat(e.target.value))
+                          : e.target.value;
+                        setSignalParameters(prev => ({
+                          ...prev,
+                          [key]: value
+                        }));
+                      }}
+                      step={isNumber ? (key.includes('level') ? '0.1' : '1') : undefined}
+                      min={isNumber ? '0' : undefined}
+                      className="w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm 
+                               bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100
+                               focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      placeholder={`Default: ${defaultValue}`}
+                    />
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      {getParameterDescription(key, defaultValue)}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+            
+            {/* Modal Footer */}
+            <div className="flex flex-col-reverse sm:flex-row gap-3 p-4 border-t border-gray-200 dark:border-gray-700">
+              <button
+                type="button"
+                onClick={() => setShowSignalModal(false)}
+                className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 
+                         bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md 
+                         hover:bg-gray-50 dark:hover:bg-gray-600 focus:ring-2 focus:ring-gray-500"
+              >
+                Cancel
+              </button>
+              <button 
+                type="button"
+                onClick={addSignalWithParameters}
+                className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-white 
+                         bg-primary-600 hover:bg-primary-700 rounded-md focus:ring-2 focus:ring-primary-500"
+              >
+                Add Signal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }

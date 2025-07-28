@@ -9,9 +9,11 @@ import (
 
 var (
 	baseStrategies = map[string]types.StratBuilder{
-		"SMA":  NewSmaStrategy,
-		"MACD": NewMacdStrategy,
-		"RSI":  NewRsiStrategy,
+		"SMA":            NewSmaStrategy,
+		"SMA_CROSSOVER":  NewSmaCrossoverStrategy,
+		"MACD":           NewMacdStrategy,
+		"RSI":            NewRsiStrategy,
+		"SignalAdapter":  NewSignalAdapterStrategyFactory,
 	}
 	customStrategies = map[string]types.StratBuilder{}
 )

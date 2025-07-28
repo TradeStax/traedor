@@ -10,10 +10,11 @@ type IStrategy interface {
 type StratBuilder func(*Config, chan Indicator) IStrategy
 
 type Config struct {
-	Type       string
-	IgnoreNone bool
-	Symbol     string
-	Params     Params
+	Type         string
+	IgnoreNone   bool
+	Symbol       string
+	Params       Params
+	SignalParams map[string]interface{}
 }
 
 type Params struct {

@@ -221,16 +221,36 @@ func (sw *SignalWorkflow) InitializeRun(runID string, signalIDs []string) error 
 			return fmt.Errorf("signal definition '%s' not found", signalID)
 		}
 
-		newGenerator, exists := GetSignalGenerator(def.Type)
-		if !exists {
-			return fmt.Errorf("signal generator '%s' not found", def.Type)
+		// Check if this signal has aggregation parameters
+		var generator ISignalGenerator
+		if aggregationInterval, hasAggregation := def.Parameters["aggregation_interval"]; hasAggregation {
+			// Create aggregated signal
+			intervalMinutes, ok := aggregationInterval.(float64)
+			if !ok {
+				return fmt.Errorf("invalid aggregation_interval type for signal '%s'", def.Name)
+			}
+
+			baseGenerator, exists := GetSignalGenerator(def.Type)
+			if !exists {
+				return fmt.Errorf("signal generator '%s' not found", def.Type)
+			}
+
+			// Create aggregated wrapper
+			generator = NewAggregatedSignal(baseGenerator, int(intervalMinutes))
+		} else {
+			// Create regular signal
+			var exists bool
+			generator, exists = GetSignalGenerator(def.Type)
+			if !exists {
+				return fmt.Errorf("signal generator '%s' not found", def.Type)
+			}
 		}
 
-		if err := newGenerator.Initialize(def.Parameters); err != nil {
+		if err := generator.Initialize(def.Parameters); err != nil {
 			return fmt.Errorf("failed to initialize signal '%s': %w", def.Name, err)
 		}
 
-		runContext.Generators[signalID] = newGenerator
+		runContext.Generators[signalID] = generator
 	}
 
 	sw.activeRuns[runID] = runContext

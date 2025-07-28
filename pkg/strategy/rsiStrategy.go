@@ -16,6 +16,8 @@ type RsiStrategy struct {
 	config        *types.Config
 	dataCache     []datafeed.Data
 	indicatorChan chan types.Indicator
+	lastRSI       float64
+	lastSignal    int
 }
 
 func NewRsiStrategy(c *types.Config, ic chan types.Indicator) types.IStrategy {
@@ -23,6 +25,8 @@ func NewRsiStrategy(c *types.Config, ic chan types.Indicator) types.IStrategy {
 		config:        c,
 		dataCache:     make([]datafeed.Data, 10),
 		indicatorChan: ic,
+		lastRSI:       50.0, // neutral starting value
+		lastSignal:    types.None,
 	}
 }
 
@@ -41,26 +45,35 @@ func (s *RsiStrategy) GetIndicatorFeed() chan types.Indicator {
 
 func (s *RsiStrategy) determineIndicator() {
 	var ind types.Indicator
+	ind.Direction = types.None // Default to no signal
+	ind.Price = s.dataCache[9].Close
+	
 	if s.dataCache[0].Volume == 0 {
-		ind.Direction = types.None
 		s.indicatorChan <- ind
 		return
 	}
+	
 	rsiVals := rsi(s.dataCache)
-	latestRsi := rsiVals[len(rsiVals)-1]
-	if latestRsi > overboughtVal || latestRsi < oversoldVal {
-		// overbought or oversold, close
-		ind.Direction = types.Close
-		ind.Price = s.dataCache[9].Close
-	} else if rsiIncreasing(rsiVals) {
-		// increasing, buy
-		ind.Direction = types.Buy
-		ind.Price = s.dataCache[9].Close
-	} else {
-		// decreasing, sell
-		ind.Direction = types.Sell
-		ind.Price = s.dataCache[9].Close
+	if len(rsiVals) == 0 {
+		s.indicatorChan <- ind
+		return
 	}
+	
+	latestRsi := rsiVals[len(rsiVals)-1]
+	
+	// Only signal on RSI crossovers, not every tick
+	if s.lastRSI > oversoldVal && latestRsi <= oversoldVal {
+		// RSI just entered oversold territory - potential buy signal
+		ind.Direction = types.Buy
+		s.lastSignal = types.Buy
+	} else if s.lastRSI < overboughtVal && latestRsi >= overboughtVal {
+		// RSI just entered overbought territory - potential sell signal
+		ind.Direction = types.Sell
+		s.lastSignal = types.Sell
+	}
+	// Note: Removed the automatic "Close" signal to prevent overtrading
+	
+	s.lastRSI = latestRsi
 	s.indicatorChan <- ind
 }
 

@@ -36,7 +36,7 @@ WORKDIR /app
 COPY --from=builder /app/server .
 
 # Copy configuration template
-COPY --from=builder /app/config.docker.yaml .
+COPY --from=builder /app/config.docker.yaml ./config.yaml
 
 # Create data directory
 RUN mkdir -p data

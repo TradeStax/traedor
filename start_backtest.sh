@@ -23,20 +23,20 @@ BACKTEST_CONFIG='{
   ],
   "broker": {
     "type": "Futures", 
-    "starting_balance": 3500,
+    "starting_balance": 10000,
     "weekly_withdrawl": 0,
     "trailing_stop_amount": 10,
     "fee_per_side": 1,
     "open_slippage": 0.25,
     "symbol": {
       "name": "/MES",
-      "margin": 0,
-      "point_price": 0
+      "margin": 500,
+      "point_price": 5
     }
   },
   "strategies": [],
   "signals": [
-    "RSI"
+    "c0114404-d3ce-4370-b336-b35afdd32e9a"
   ]
 }'
 

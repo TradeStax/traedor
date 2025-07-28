@@ -39,6 +39,7 @@ func (d *DBDatafeed) GetErrorChan() chan error {
 }
 
 func (d *DBDatafeed) Start() {
+	fmt.Printf("DBDatafeed: Starting database datafeed for symbol %s from %v to %v\n", d.config.Symbol, time.Unix(d.config.StartTime, 0), time.Unix(d.config.EndTime, 0))
 	go d.stream()
 }
 
@@ -47,36 +48,42 @@ func (d *DBDatafeed) stream() {
 	startTime := time.Unix(d.config.StartTime, 0)
 	endTime := time.Unix(d.config.EndTime, 0)
 	
-	// Stream OHLC data from database in chunks to prevent memory issues
-	chunkSize := 1000 // Process 1000 records at a time
+	fmt.Printf("DBDatafeed: Starting true streaming for %s from %v to %v\n", d.config.Symbol, startTime, endTime)
 	
-	err := d.storage.GetOHLCDataStream(d.config.Symbol, startTime, endTime, chunkSize, func(chunk []storage.OHLCData) error {
-		// Process each chunk immediately
-		for _, ohlc := range chunk {
+	totalProcessed := 0
+	
+	// Use the new streaming method that processes one tick at a time
+	err := d.storage.StreamOHLCData(d.config.Symbol, startTime, endTime, func(ohlc storage.OHLCData) error {
+		totalProcessed++
+		
+		// Log progress every 10,000 ticks
+		if totalProcessed%10000 == 0 {
+			fmt.Printf("DBDatafeed: Streamed %d ticks...\n", totalProcessed)
+		}
+		
+		select {
+		case <-d.ctx.Done():
+			return fmt.Errorf("context cancelled")
+		default:
+			// Convert prices from database storage format (multiplied by 100) to actual prices
+			data := Data{
+				Symbol: ohlc.Symbol,
+				Date:   ohlc.Time.Unix(), // Unix seconds - aggregator expects this
+				Open:   ohlc.Open / 100.0,
+				High:   ohlc.High / 100.0,
+				Low:    ohlc.Low / 100.0,
+				Close:  ohlc.Close / 100.0,
+				Volume: float64(ohlc.Volume),
+			}
+			
+			// Send tick data directly to the channel
 			select {
+			case d.dataChan <- data:
 			case <-d.ctx.Done():
 				return fmt.Errorf("context cancelled")
-			default:
-				// For tick data (tick_sequence > 0), use close price as the tick price
-				// For bar data, we could emit OHLC values or just close
-				data := Data{
-					Symbol: ohlc.Symbol,
-					Date:   ohlc.Time.Unix(),
-					Open:   ohlc.Open,
-					High:   ohlc.High,
-					Low:    ohlc.Low,
-					Close:  ohlc.Close,
-					Volume: float64(ohlc.Volume),
-				}
-				
-				select {
-				case d.dataChan <- data:
-				case <-d.ctx.Done():
-					return fmt.Errorf("context cancelled")
-				}
 			}
 		}
-		// Chunk is automatically garbage collected when this function returns
+		
 		return nil
 	})
 	
@@ -84,6 +91,8 @@ func (d *DBDatafeed) stream() {
 		d.errorChan <- fmt.Errorf("error streaming OHLC data: %w", err)
 		return
 	}
+	
+	fmt.Printf("DBDatafeed: Completed streaming %d total records for symbol %s\n", totalProcessed, d.config.Symbol)
 	
 	// Signal completion by closing the data channel
 	close(d.dataChan)

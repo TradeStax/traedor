@@ -585,10 +585,67 @@ func (p *PostgresStorage) GetStuckImports() ([]*MarketDataFile, error) {
 	return files, nil
 }
 
+// StreamOHLCData streams OHLC data one record at a time using proper PostgreSQL streaming
+// This is the optimal approach for backtesting with no batching
+func (p *PostgresStorage) StreamOHLCData(symbol string, startTime, endTime time.Time, callback func(OHLCData) error) error {
+	query := `
+		SELECT id, file_id, symbol, time, tick_sequence, open, high, low, close,
+		       volume, trade_count, ohlc_avg, hlc_avg, hl_avg,
+		       bid_volume, ask_volume, created_at
+		FROM ohlc_data
+		WHERE symbol = $1 AND time >= $2 AND time <= $3
+		ORDER BY time ASC, tick_sequence ASC
+	`
+	
+	rows, err := p.db.Query(query, symbol, startTime, endTime)
+	if err != nil {
+		return fmt.Errorf("failed to query OHLC data: %w", err)
+	}
+	defer rows.Close()
+	
+	// Stream each row as it comes from the database
+	for rows.Next() {
+		var d OHLCData
+		err := rows.Scan(
+			&d.ID,
+			&d.FileID,
+			&d.Symbol,
+			&d.Time,
+			&d.TickSequence,
+			&d.Open,
+			&d.High,
+			&d.Low,
+			&d.Close,
+			&d.Volume,
+			&d.TradeCount,
+			&d.OHLCAvg,
+			&d.HLCAvg,
+			&d.HLAvg,
+			&d.BidVolume,
+			&d.AskVolume,
+			&d.CreatedAt,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to scan row: %w", err)
+		}
+		
+		// Send each tick immediately through the callback
+		if err := callback(d); err != nil {
+			return fmt.Errorf("callback error: %w", err)
+		}
+	}
+	
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("error iterating rows: %w", err)
+	}
+	
+	return nil
+}
+
 // GetOHLCDataStream retrieves OHLC data in chunks to prevent memory issues
 func (p *PostgresStorage) GetOHLCDataStream(symbol string, startTime, endTime time.Time, chunkSize int, callback func([]OHLCData) error) error {
 	if chunkSize <= 0 {
-		chunkSize = 1000 // Default chunk size
+		chunkSize = 100000 // Default chunk size - larger for better performance
 	}
 	
 	offset := 0
@@ -600,7 +657,7 @@ func (p *PostgresStorage) GetOHLCDataStream(symbol string, startTime, endTime ti
 			       bid_volume, ask_volume, created_at
 			FROM ohlc_data
 			WHERE symbol = $1 AND time >= $2 AND time <= $3
-			ORDER BY time ASC
+			ORDER BY time ASC, tick_sequence ASC
 			LIMIT $4 OFFSET $5
 		`
 		
@@ -609,7 +666,8 @@ func (p *PostgresStorage) GetOHLCDataStream(symbol string, startTime, endTime ti
 			return fmt.Errorf("failed to query OHLC data chunk: %w", err)
 		}
 		
-		var chunk []OHLCData
+		// Pre-allocate slice for better performance
+		chunk := make([]OHLCData, 0, chunkSize)
 		for rows.Next() {
 			var d OHLCData
 			err := rows.Scan(

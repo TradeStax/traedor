@@ -26,6 +26,7 @@ type IStorage interface {
 	SaveTrade(runID string, trade *types.Trade) error
 	GetTrades(runID string) ([]*types.Trade, error)
 	GetTradesPaginated(runID string, limit, offset int) ([]*types.Trade, int, error)
+	StreamTrades(runID string, callback func(*types.Trade) error) error
 
 	// Signal management
 	SaveSignal(runID string, signal Signal) error
@@ -58,10 +59,13 @@ type IStorage interface {
 	BulkInsertTechnicalIndicators(indicators []TechnicalIndicator) error
 	GetOHLCData(symbol string, startTime, endTime time.Time) ([]OHLCData, error)
 	GetOHLCDataStream(symbol string, startTime, endTime time.Time, chunkSize int, callback func([]OHLCData) error) error
+	StreamOHLCData(symbol string, startTime, endTime time.Time, callback func(OHLCData) error) error
 	GetTechnicalIndicators(symbol string, indicatorName string, startTime, endTime time.Time) ([]TechnicalIndicator, error)
 	GetAvailableSymbols() ([]string, error)
+	SymbolExists(symbol string) (bool, error)
 	GetAvailableTimeframes() ([]string, error)
 	GetSymbolDetails() ([]Symbol, error)
+	GetImportedSymbolDetails() ([]Symbol, error)
 	GetTimeframeDetails() ([]Timeframe, error)
 	GetSymbolDataAvailability(symbol string) (*DataAvailability, error)
 	ResetStuckImports() (int, error)
@@ -74,14 +78,21 @@ type IStorage interface {
 }
 
 type RunConfig struct {
-	Symbol     string            `json:"symbol"`
-	Timeframe  string            `json:"timeframe"`
-	StartTime  time.Time         `json:"start_time"`
-	EndTime    time.Time         `json:"end_time"`
-	Datafeeds  []DatafeedConfig  `json:"datafeeds"`
-	Broker     BrokerConfig      `json:"broker"`
-	Strategies []StrategyConfig  `json:"strategies"`
-	Signals    []string          `json:"signals"` // Signal IDs to include
+	Symbol            string               `json:"symbol"`
+	Timeframe         string               `json:"timeframe"`
+	StartTime         time.Time            `json:"start_time"`
+	EndTime           time.Time            `json:"end_time"`
+	Datafeeds         []DatafeedConfig     `json:"datafeeds"`
+	Broker            BrokerConfig         `json:"broker"`
+	Strategies        []StrategyConfig     `json:"strategies"`
+	Signals           []string             `json:"signals,omitempty"` // Signal IDs to include (legacy)
+	SignalsWithParams []SignalWithParams   `json:"signals_with_params,omitempty"` // New format with parameters
+	SignalDefinitions []SignalDefinition   `json:"signal_definitions,omitempty"` // For creating new definitions
+}
+
+type SignalWithParams struct {
+	SignalDefinitionID string                 `json:"signal_definition_id"`
+	Parameters         map[string]interface{} `json:"parameters"`
 }
 
 type DatafeedConfig struct {

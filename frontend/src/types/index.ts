@@ -24,7 +24,14 @@ export interface RunConfig {
   datafeeds: DatafeedConfig[];
   broker: BrokerConfig;
   strategies: StrategyConfig[];
-  signals: string[];
+  signals?: string[];
+  signals_with_params?: SignalWithParams[];
+  signal_definitions?: Partial<SignalDefinition>[];
+}
+
+export interface SignalWithParams {
+  signal_definition_id: string;
+  parameters: Record<string, any>;
 }
 
 export interface DatafeedConfig {
@@ -39,6 +46,7 @@ export interface BrokerConfig {
   starting_balance: number;
   weekly_withdrawl: number;
   trailing_stop_amount: number;
+  profit_target: number;
   fee_per_side: number;
   open_slippage: number;
   symbol: SymbolConfig;
@@ -122,9 +130,17 @@ export interface SignalDefinition {
   id?: string;
   name: string;
   description: string;
-  type: 'technical' | 'ml' | 'custom';
+  type: string;
   parameters: Record<string, any>;
   active: boolean;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface SignalOption {
+  name: string;
+  description: string;
+  type: string;
+  parameters: Record<string, any>;
+  aggregation_intervals?: number[];
 }

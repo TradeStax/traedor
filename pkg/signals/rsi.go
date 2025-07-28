@@ -165,23 +165,54 @@ func (r *RSISignal) GetDefaultParameters() map[string]interface{} {
 }
 
 func (r *RSISignal) ValidateParameters(params map[string]interface{}) error {
-	period, err := r.GetIntParameter("period", 14)
-	if err != nil {
-		return err
+	period := 14          // default
+	overboughtLevel := 70.0  // default
+	oversoldLevel := 30.0    // default
+	
+	// Extract period
+	if val, ok := params["period"]; ok {
+		switch v := val.(type) {
+		case int:
+			period = v
+		case int64:
+			period = int(v)
+		case float64:
+			period = int(v)
+		default:
+			return fmt.Errorf("period must be a number")
+		}
+	}
+	
+	// Extract overbought_level
+	if val, ok := params["overbought_level"]; ok {
+		switch v := val.(type) {
+		case float64:
+			overboughtLevel = v
+		case int:
+			overboughtLevel = float64(v)
+		case int64:
+			overboughtLevel = float64(v)
+		default:
+			return fmt.Errorf("overbought_level must be a number")
+		}
+	}
+	
+	// Extract oversold_level
+	if val, ok := params["oversold_level"]; ok {
+		switch v := val.(type) {
+		case float64:
+			oversoldLevel = v
+		case int:
+			oversoldLevel = float64(v)
+		case int64:
+			oversoldLevel = float64(v)
+		default:
+			return fmt.Errorf("oversold_level must be a number")
+		}
 	}
 	
 	if period <= 0 {
 		return fmt.Errorf("period must be greater than 0")
-	}
-	
-	overboughtLevel, err := r.GetFloatParameter("overbought_level", 70.0)
-	if err != nil {
-		return err
-	}
-	
-	oversoldLevel, err := r.GetFloatParameter("oversold_level", 30.0)
-	if err != nil {
-		return err
 	}
 	
 	if overboughtLevel <= oversoldLevel {

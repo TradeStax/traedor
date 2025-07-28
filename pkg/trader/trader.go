@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"runtime"
+	"time"
 
 	"github.com/tradestax/traedor/internal/config"
 	"github.com/tradestax/traedor/pkg/auth"
@@ -16,17 +18,18 @@ import (
 )
 
 type Trader struct {
-	authHelper    auth.IAuthHelper
-	broker        broker.IBroker
-	data          []datafeed.IDatafeed
-	dataChan      chan datafeed.Data
-	errorChan     chan error
-	indicatorChan chan types.Indicator
-	strategy      types.IStrategy
-	config        *config.Config
-	storage       storage.IStorage
-	runID         string
-	finalized     bool
+	authHelper       auth.IAuthHelper
+	broker           broker.IBroker
+	data             []datafeed.IDatafeed
+	dataChan         chan datafeed.Data
+	errorChan        chan error
+	indicatorChan    chan types.Indicator
+	strategy         types.IStrategy
+	config           *config.Config
+	storage          storage.IStorage
+	runID            string
+	finalized        bool
+	progressCallback func(float64, string)
 }
 
 func NewTrader(c *config.Config) *Trader {
@@ -56,7 +59,14 @@ func NewTraderWithStorage(c *config.Config, store storage.IStorage, runID string
 	}
 }
 
+// SetProgressCallback sets the progress callback function
+func (t *Trader) SetProgressCallback(callback func(float64, string)) {
+	t.progressCallback = callback
+}
+
 func (t *Trader) Run() error {
+	log.Printf("Trader.Run: Starting trader for run %s", t.runID)
+	
 	// Update run status to running
 	if t.storage != nil && t.runID != "" {
 		if err := t.storage.UpdateRunStatus(t.runID, storage.RunStatusRunning, nil); err != nil {
@@ -64,14 +74,39 @@ func (t *Trader) Run() error {
 		}
 	}
 
+	// Helper function to update progress
+	updateProgress := func(progress float64, message string) {
+		if t.progressCallback != nil {
+			t.progressCallback(progress, message)
+		}
+		if t.storage != nil && t.runID != "" {
+			if err := t.storage.UpdateRunProgress(t.runID, progress, message); err != nil {
+				log.Printf("Failed to update progress: %v", err)
+			}
+		}
+	}
+
+	updateProgress(35.0, "Authenticating...")
+	log.Printf("Trader.Run: Authenticating...")
 	if err := t.authHelper.Authenticate(); err != nil {
 		t.updateRunStatusFailed(err)
 		return fmt.Errorf("authentication failed: %w", err)
 	}
 	
-	for _, df := range t.data {
+	updateProgress(40.0, "Starting datafeeds...")
+	log.Printf("Trader.Run: Starting %d datafeeds", len(t.data))
+	for i, df := range t.data {
+		log.Printf("Trader.Run: Starting datafeed %d", i)
 		df.Start()
 	}
+	
+	updateProgress(45.0, "Waiting for market data...")
+	log.Printf("Trader.Run: Waiting for data...")
+	
+	// Track progress
+	tickCount := 0
+	lastProgressUpdate := time.Now()
+	progressUpdateInterval := 5 * time.Second // More frequent updates
 	
 	for {
 		select {
@@ -82,9 +117,41 @@ func (t *Trader) Run() error {
 		case newData, ok := <-t.dataChan:
 			if !ok {
 				// Data channel closed, datafeed finished
-				log.Printf("Datafeed completed, finishing backtest")
+				log.Printf("Datafeed completed, finishing backtest. Total ticks processed: %d", tickCount)
+				updateProgress(95.0, "Finalizing backtest results...")
+				
+				// Flush any pending aggregated bars from the strategy
+				if flusher, ok := t.strategy.(interface{ Flush() error }); ok {
+					log.Printf("Trader.Run: Flushing strategy for final signals...")
+					if err := flusher.Flush(); err != nil {
+						log.Printf("Warning: Failed to flush strategy: %v", err)
+					}
+				}
+				
 				return nil
 			}
+			
+			tickCount++
+			
+			// First tick received - update progress to show data processing has started
+			if tickCount == 1 {
+				updateProgress(50.0, "Processing market data... (first tick received)")
+			}
+			
+			// Update progress periodically
+			if time.Since(lastProgressUpdate) > progressUpdateInterval {
+				// More responsive progress calculation
+				baseProgress := 50.0 // Start at 50% when data processing begins
+				tickProgress := math.Min(35.0, float64(tickCount)/10000.0*35.0) // Scale to 35% max for tick processing
+				currentProgress := baseProgress + tickProgress
+				
+				progressMsg := fmt.Sprintf("Processing market data... %d ticks processed", tickCount)
+				updateProgress(currentProgress, progressMsg)
+				
+				log.Printf("Trader.Run: Processed %d ticks so far (%.1f%%)", tickCount, currentProgress)
+				lastProgressUpdate = time.Now()
+			}
+			
 			// Save tick data if storage is available
 			// TODO: Fix tick data saving - currently causes partition and connection pool issues
 			// if t.storage != nil && t.runID != "" {

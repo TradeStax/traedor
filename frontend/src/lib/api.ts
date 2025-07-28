@@ -42,13 +42,21 @@ export const runsApi = {
     if (offset) params.append('offset', offset.toString());
     
     const response = await api.get<{
-      trades: Trade[];
+      trades: any[]; // Raw backend trades format
       pagination: {
         total: number;
         limit: number;
         offset: number;
       };
     }>(`/runs/${runId}/trades?${params.toString()}`);
+    return response.data;
+  },
+
+  getTradesStream: async (runId: string) => {
+    const response = await api.get<{
+      trades: any[]; // Raw backend trades format
+      total: number;
+    }>(`/runs/${runId}/trades/stream`);
     return response.data;
   },
 

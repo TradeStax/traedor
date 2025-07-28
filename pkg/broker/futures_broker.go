@@ -158,7 +158,7 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 	case Buy:
 		if b.currentTrade != nil && b.currentTrade.Operation == Sell {
 			b.closePosition()
-			return nil
+			// Don't return - continue to open the Buy position
 		}
 		if b.currentTrade == nil {
 			if !b.validTrade(&t) {
@@ -199,7 +199,7 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 	case Sell:
 		if b.currentTrade != nil && b.currentTrade.Operation == Buy {
 			b.closePosition()
-			return nil
+			// Don't return - continue to open the Sell position
 		}
 		if b.currentTrade == nil {
 			if !b.validTrade(&t) {
@@ -217,6 +217,7 @@ func (b *FuturesBroker) SendTrade(t Trade) error {
 			// slippage
 			b.currentTrade.Price = b.currentPrice - b.config.OpenSlippage
 			b.currentTrade.OpenPrice = b.currentTrade.Price
+			log.Printf("*** BROKER DEBUG *** CurrentPrice: %.8f -> OpenPrice set to: %.8f", b.currentPrice, b.currentTrade.OpenPrice)
 			// set stops
 			tradeStops := make([]stop.IStop, len(b.config.Stops))
 			for i := 0; i < len(b.config.Stops); i++ {
@@ -269,6 +270,7 @@ func (b *FuturesBroker) updateBalance() {
 	b.account.availableBalance -= fee
 	b.account.balance -= fee
 	b.currentTrade.Net = net
+	b.currentTrade.NetProfit = net // Sync NetProfit field for storage
 	log.Printf("Close trade at %v\n", time.Unix(b.currentTime/1000, 0))
 	
 	// Track balance history and drawdown
@@ -283,6 +285,7 @@ func (b *FuturesBroker) closePosition() {
 	log.Printf("Broker Close Trade: Symbol: %v Price: %.2f Quantity: %d\n", b.currentTrade.Symbol, b.currentPrice, b.currentTrade.Quantity)
 	b.currentTrade.CloseTime = b.currentTime
 	b.currentTrade.ClosePrice = b.currentPrice
+	log.Printf("*** BROKER DEBUG *** CurrentPrice: %.8f -> ClosePrice set to: %.8f", b.currentPrice, b.currentTrade.ClosePrice)
 	b.updateBalance()
 	b.trades = append(b.trades, b.currentTrade)
 	b.currentTrade = nil

@@ -47,7 +47,7 @@ export default function RunProgress({ run, showDetails = false }: RunProgressPro
   };
 
   const isActive = run.status === 'running' || run.status === 'queued';
-  const showProgress = isActive && run.progress > 0;
+  const showProgress = isActive; // Always show progress for active runs
 
   return (
     <div className="space-y-2">
@@ -63,14 +63,19 @@ export default function RunProgress({ run, showDetails = false }: RunProgressPro
         
         {showProgress && (
           <div className="flex-1 min-w-0">
-            <div className="w-full bg-gray-200 rounded-full h-2">
+            <div className="w-full bg-gray-200 rounded-full h-2 relative overflow-hidden">
               <div
                 className="bg-blue-600 h-2 rounded-full transition-all duration-300"
                 style={{ width: `${Math.min(100, Math.max(0, run.progress))}%` }}
               />
+              {/* Show animated stripes when progress is 0 to indicate activity */}
+              {run.progress === 0 && (
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-blue-400 to-transparent opacity-30 animate-pulse" />
+              )}
             </div>
             <div className="text-xs text-gray-500 mt-1">
               {run.progress.toFixed(1)}%
+              {run.status_message && ` - ${run.status_message}`}
             </div>
           </div>
         )}

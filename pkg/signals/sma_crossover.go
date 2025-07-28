@@ -70,6 +70,12 @@ func (s *SMACrossoverSignal) ProcessTick(tick datafeed.Data) (Signal, error) {
 
 	// Need enough data for long MA
 	if len(s.priceHistory) < s.longPeriod {
+		// Debug: Log when we don't have enough data yet
+		if len(s.priceHistory)%100 == 0 { // Log every 100 ticks to avoid spam
+			fmt.Printf("SMA Crossover: Need %d periods, have %d (%.1f%%)\n", 
+				s.longPeriod, len(s.priceHistory), 
+				float64(len(s.priceHistory))/float64(s.longPeriod)*100)
+		}
 		return signal, nil
 	}
 
@@ -83,6 +89,11 @@ func (s *SMACrossoverSignal) ProcessTick(tick datafeed.Data) (Signal, error) {
 	signal.Metadata["short_ma"] = shortMA
 	signal.Metadata["long_ma"] = longMA
 
+	// First time reaching crossover logic - log it
+	if len(s.shortMA) == 0 && len(s.longMA) == 0 {
+		fmt.Printf("SMA Crossover: First calculation - Short MA: %.2f, Long MA: %.2f\n", shortMA, longMA)
+	}
+
 	// Generate signal based on crossover
 	if len(s.shortMA) > 0 && len(s.longMA) > 0 {
 		prevShortMA := s.shortMA[len(s.shortMA)-1]
@@ -90,11 +101,15 @@ func (s *SMACrossoverSignal) ProcessTick(tick datafeed.Data) (Signal, error) {
 
 		// Bullish crossover: short MA crosses above long MA
 		if prevShortMA <= prevLongMA && shortMA > longMA {
+			fmt.Printf("SMA Crossover: BUY SIGNAL - Short MA %.2f crossed above Long MA %.2f (prev: %.2f/%.2f)\n", 
+				shortMA, longMA, prevShortMA, prevLongMA)
 			signal.Type = SignalBuy
 			signal.Strength = s.calculateStrength(shortMA, longMA)
 			s.lastSignal = SignalBuy
 		} else if prevShortMA >= prevLongMA && shortMA < longMA {
 			// Bearish crossover: short MA crosses below long MA
+			fmt.Printf("SMA Crossover: SELL SIGNAL - Short MA %.2f crossed below Long MA %.2f (prev: %.2f/%.2f)\n", 
+				shortMA, longMA, prevShortMA, prevLongMA)
 			signal.Type = SignalSell
 			signal.Strength = s.calculateStrength(longMA, shortMA)
 			s.lastSignal = SignalSell
@@ -128,6 +143,7 @@ func (s *SMACrossoverSignal) calculateMA(prices []float64) float64 {
 	return sum / float64(len(prices))
 }
 
+
 func (s *SMACrossoverSignal) calculateStrength(ma1, ma2 float64) float64 {
 	// Calculate strength based on the difference between MAs
 	diff := (ma1 - ma2) / ma2
@@ -152,14 +168,35 @@ func (s *SMACrossoverSignal) GetDefaultParameters() map[string]interface{} {
 }
 
 func (s *SMACrossoverSignal) ValidateParameters(params map[string]interface{}) error {
-	shortPeriod, err := s.GetIntParameter("short_period", 20)
-	if err != nil {
-		return err
+	shortPeriod := 20 // default
+	longPeriod := 50  // default
+	
+	// Extract short_period
+	if val, ok := params["short_period"]; ok {
+		switch v := val.(type) {
+		case int:
+			shortPeriod = v
+		case int64:
+			shortPeriod = int(v)
+		case float64:
+			shortPeriod = int(v)
+		default:
+			return fmt.Errorf("short_period must be a number")
+		}
 	}
 	
-	longPeriod, err := s.GetIntParameter("long_period", 50)
-	if err != nil {
-		return err
+	// Extract long_period
+	if val, ok := params["long_period"]; ok {
+		switch v := val.(type) {
+		case int:
+			longPeriod = v
+		case int64:
+			longPeriod = int(v)
+		case float64:
+			longPeriod = int(v)
+		default:
+			return fmt.Errorf("long_period must be a number")
+		}
 	}
 	
 	if shortPeriod <= 0 {

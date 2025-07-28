@@ -6,6 +6,7 @@ import Layout from '@/components/Layout';
 import RunProgress from '@/components/RunProgress';
 import { runsApi } from '@/lib/api';
 import PerformanceChart from '@/components/PerformanceChart';
+import { Trade } from '@/types';
 
 export default function RunDetailPage() {
   const router = useRouter();
@@ -13,6 +14,7 @@ export default function RunDetailPage() {
   const queryClient = useQueryClient();
   const [isCancelling, setIsCancelling] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [useStreaming, setUseStreaming] = useState(false);
   const tradesPerPage = 100;
 
   const { data: run, isLoading, error } = useQuery({
@@ -32,13 +34,82 @@ export default function RunDetailPage() {
   const { data: tradesData, error: tradesError, isLoading: tradesLoading } = useQuery({
     queryKey: ['trades', id, currentPage],
     queryFn: () => runsApi.getTrades(id as string, tradesPerPage, (currentPage - 1) * tradesPerPage),
-    enabled: !!id,
+    enabled: !!id && !useStreaming,
+    retry: 1,
+  });
+
+  const { data: streamTradesData, error: streamTradesError, isLoading: streamTradesLoading } = useQuery({
+    queryKey: ['trades-stream', id],
+    queryFn: () => runsApi.getTradesStream(id as string),
+    enabled: !!id && useStreaming,
     retry: 1,
   });
   
-  const trades = tradesData?.trades || [];
-  const tradesTotalCount = tradesData?.pagination?.total || 0;
-  const totalPages = Math.ceil(tradesTotalCount / tradesPerPage);
+  // Transform backend trades format to frontend format
+  const transformTrade = (backendTrade: any): Trade => {
+    try {
+      console.log('Transforming trade:', backendTrade);
+      
+      const operation: 'Buy' | 'Sell' | 'Close' = 
+        backendTrade.Operation === 2 ? 'Buy' : 
+        backendTrade.Operation === 3 ? 'Sell' : 'Close';
+      
+      const transformed = {
+        id: `${backendTrade.OpenTime}-${backendTrade.Operation}`, // Create ID from timestamp and operation
+        symbol: backendTrade.Symbol,
+        operation,
+        quantity: backendTrade.Quantity,
+        open_price: backendTrade.OpenPrice, // Backend already provides correctly scaled prices
+        close_price: backendTrade.ClosePrice || undefined,
+        open_time: new Date(backendTrade.OpenTime).toISOString(),
+        close_time: backendTrade.CloseTime ? new Date(backendTrade.CloseTime).toISOString() : undefined,
+        net_profit: backendTrade.NetProfit,
+        max_profit: backendTrade.MaxProfit,
+        max_drawdown: backendTrade.MaxDrawdown,
+        mfe: backendTrade.MFE,
+        mfe_percent: backendTrade.MFEPercent,
+        mae: backendTrade.MAE,
+        mae_percent: backendTrade.MAEPercent,
+      };
+      
+      console.log('Transformed trade:', transformed);
+      console.log('Transformed open_price:', transformed.open_price);
+      console.log('Transformed close_price:', transformed.close_price);
+      return transformed;
+    } catch (error) {
+      console.error('Error transforming trade:', error, backendTrade);
+      throw error;
+    }
+  };
+
+  console.log('Raw trades data:', tradesData);
+  console.log('Raw stream trades data:', streamTradesData);
+  console.log('Trades error:', tradesError || streamTradesError);
+  console.log('Trades loading:', tradesLoading || streamTradesLoading);
+  
+  // Select data source based on streaming mode
+  const selectedTradesData = useStreaming ? streamTradesData : tradesData;
+  const selectedTradesError = useStreaming ? streamTradesError : tradesError;
+  const selectedTradesLoading = useStreaming ? streamTradesLoading : tradesLoading;
+  
+  const trades = useStreaming 
+    ? streamTradesData?.trades?.map(transformTrade) || []
+    : tradesData?.trades?.map(transformTrade) || [];
+    
+  const tradesTotalCount = useStreaming 
+    ? streamTradesData?.total || 0
+    : tradesData?.pagination?.total || 0;
+    
+  const totalPages = useStreaming ? 1 : Math.ceil(tradesTotalCount / tradesPerPage);
+  
+  console.log('Processed trades:', trades);
+  console.log('Total trades count:', tradesTotalCount);
+  
+  // Debug the first trade if it exists
+  if (trades.length > 0) {
+    console.log('First trade open_price:', trades[0].open_price);
+    console.log('First trade close_price:', trades[0].close_price);
+  }
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
@@ -216,6 +287,14 @@ export default function RunDetailPage() {
               <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">Starting Balance</dt>
               <dd className="mt-1 text-sm text-gray-900 dark:text-gray-100">${formatNumber(run.config.broker.starting_balance)}</dd>
             </div>
+            <div>
+              <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">Start Date</dt>
+              <dd className="mt-1 text-sm text-gray-900 dark:text-gray-100">{format(new Date(run.config.start_time), 'MMM d, yyyy')}</dd>
+            </div>
+            <div>
+              <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">End Date</dt>
+              <dd className="mt-1 text-sm text-gray-900 dark:text-gray-100">{format(new Date(run.config.end_time), 'MMM d, yyyy')}</dd>
+            </div>
           </div>
         </div>
 
@@ -369,19 +448,37 @@ export default function RunDetailPage() {
         {/* Trades Table */}
         <div className="card">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100">Trades</h2>
-            {tradesLoading && (
-              <div className="text-sm text-gray-500 dark:text-gray-400">Loading trades...</div>
+            <div className="flex items-center space-x-4">
+              <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100">Trades</h2>
+              <div className="flex items-center space-x-2">
+                <label className="text-sm text-gray-600 dark:text-gray-400">
+                  <input
+                    type="checkbox"
+                    checked={useStreaming}
+                    onChange={(e) => setUseStreaming(e.target.checked)}
+                    className="mr-2"
+                  />
+                  Stream all trades (no pagination)
+                </label>
+              </div>
+            </div>
+            {selectedTradesLoading && (
+              <div className="text-sm text-gray-500 dark:text-gray-400">
+                {useStreaming ? 'Streaming all trades...' : 'Loading trades...'}
+              </div>
             )}
-            {tradesError && (
+            {selectedTradesError && (
               <div className="text-sm text-red-600 dark:text-red-400">Error loading trades</div>
             )}
             {trades && (
               <div className="flex items-center space-x-4">
                 <div className="text-sm text-gray-500 dark:text-gray-400">
-                  Showing {(currentPage - 1) * tradesPerPage + 1}-{Math.min(currentPage * tradesPerPage, tradesTotalCount)} of {tradesTotalCount} trades
+                  {useStreaming 
+                    ? `Showing all ${tradesTotalCount} trades`
+                    : `Showing ${(currentPage - 1) * tradesPerPage + 1}-${Math.min(currentPage * tradesPerPage, tradesTotalCount)} of ${tradesTotalCount} trades`
+                  }
                 </div>
-                {totalPages > 1 && (
+                {!useStreaming && totalPages > 1 && (
                   <div className="flex items-center space-x-2">
                     <button
                       onClick={handlePrevPage}
@@ -405,9 +502,9 @@ export default function RunDetailPage() {
               </div>
             )}
           </div>
-          {tradesError ? (
+          {selectedTradesError ? (
             <div className="text-red-600 dark:text-red-400 text-center py-8">
-              <p>Failed to load trades: {(tradesError as any)?.message || 'Unknown error'}</p>
+              <p>Failed to load trades: {(selectedTradesError as any)?.message || 'Unknown error'}</p>
               <p className="text-sm mt-2">Check if the API is running and accessible.</p>
             </div>
           ) : trades && trades.length === 0 ? (
@@ -441,6 +538,9 @@ export default function RunDetailPage() {
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                         Open Time
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                        Close Time
                       </th>
                     </tr>
                   </thead>
@@ -493,6 +593,9 @@ export default function RunDetailPage() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                           {format(new Date(trade.open_time), 'MMM d, HH:mm')}
                         </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                          {trade.close_time ? format(new Date(trade.close_time), 'MMM d, HH:mm') : '-'}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -500,7 +603,7 @@ export default function RunDetailPage() {
               </div>
               
               {/* Bottom pagination */}
-              {totalPages > 1 && (
+              {!useStreaming && totalPages > 1 && (
                 <div className="flex justify-between items-center pt-4 border-t border-gray-200 dark:border-gray-600">
                   <div className="text-sm text-gray-500 dark:text-gray-400">
                     Showing {(currentPage - 1) * tradesPerPage + 1}-{Math.min(currentPage * tradesPerPage, tradesTotalCount)} of {tradesTotalCount} trades

@@ -130,11 +130,14 @@ func (w *Worker) executeBacktest(run *storage.Run) error {
 		return fmt.Errorf("failed to update run status: %w", err)
 	}
 	
-	if err := w.storage.UpdateRunProgress(runID, 0.0, "Initializing backtest..."); err != nil {
+	if err := w.storage.UpdateRunProgress(runID, 5.0, "Initializing backtest..."); err != nil {
 		log.Printf("Failed to update progress: %v", err)
 	}
 	
 	// Build trader configuration
+	if err := w.storage.UpdateRunProgress(runID, 10.0, "Building trader configuration..."); err != nil {
+		log.Printf("Failed to update progress: %v", err)
+	}
 	traderConfig := w.buildTraderConfig(run.Config)
 	
 	// Create progress callback
@@ -146,9 +149,11 @@ func (w *Worker) executeBacktest(run *storage.Run) error {
 	
 	// Create and run the actual trader
 	log.Printf("Starting trader with config: %+v", traderConfig)
-	progressCallback(20.0, "Initializing trader...")
+	progressCallback(15.0, "Creating trader instance...")
 	
 	traderInstance := trader.NewTraderWithStorage(traderConfig, w.storage, runID)
+	
+	progressCallback(20.0, "Initializing market data...")
 	
 	// Ensure cleanup happens regardless of how the function exits
 	defer func() {
@@ -158,8 +163,20 @@ func (w *Worker) executeBacktest(run *storage.Run) error {
 	
 	progressCallback(30.0, "Loading market data...")
 	
+	// Create progress callback for trader
+	traderProgressCallback := func(progress float64, message string) {
+		if err := w.storage.UpdateRunProgress(runID, progress, message); err != nil {
+			log.Printf("Failed to update trader progress: %v", err)
+		}
+	}
+	
+	// Pass progress callback to trader
+	traderInstance.SetProgressCallback(traderProgressCallback)
+	
 	// Run the trader and wait for completion
+	log.Printf("Worker: About to call traderInstance.Run() for run %s", runID)
 	err := traderInstance.Run()
+	log.Printf("Worker: traderInstance.Run() returned for run %s with error: %v", runID, err)
 	if err != nil {
 		log.Printf("Trader failed: %v", err)
 		if updateErr := w.storage.UpdateRunStatus(runID, storage.RunStatusFailed, nil); updateErr != nil {
@@ -184,18 +201,63 @@ func (w *Worker) executeBacktest(run *storage.Run) error {
 
 func (w *Worker) buildTraderConfig(runConfig storage.RunConfig) *config.Config {
 	// Convert storage.RunConfig to config.Config
+	log.Printf("Building trader config - input broker type: '%s'", runConfig.Broker.Type)
 	brokerConfig := w.convertBrokerConfig(runConfig.Broker)
-	datafeedConfigs := w.convertDatafeedConfigs(runConfig.Datafeeds, runConfig.StartTime, runConfig.EndTime)
+	log.Printf("Building trader config - converted broker type: '%s'", brokerConfig.Type)
+	datafeedConfigs := w.convertDatafeedConfigs(runConfig.Datafeeds, runConfig.StartTime, runConfig.EndTime, runConfig.Symbol)
 	strategyConfigs := w.convertStrategyConfigs(runConfig.Strategies)
 	
 	// Convert signals to strategies if no explicit strategies are provided
 	if len(strategyConfigs) == 0 && len(runConfig.Signals) > 0 {
-		strategyConfigs = make([]types.Config, len(runConfig.Signals))
-		for i, signal := range runConfig.Signals {
-			strategyConfigs[i] = types.Config{
-				Type:   signal,  // RSI, SMA, etc.
-				Symbol: runConfig.Symbol,
-				Params: types.Params{}, // Use default parameters
+		// Get signal definitions to extract the proper signal types
+		signalDefinitions, err := w.storage.GetSignalDefinitions()
+		if err != nil {
+			log.Printf("Failed to load signal definitions: %v", err)
+			// Fallback to empty strategies to avoid crash
+			strategyConfigs = []types.Config{}
+		} else {
+			signalDefMap := make(map[string]storage.SignalDefinition)
+			for _, def := range signalDefinitions {
+				signalDefMap[def.ID] = def
+			}
+			
+			strategyConfigs = make([]types.Config, 0, len(runConfig.Signals))
+			for _, signalID := range runConfig.Signals {
+				if def, exists := signalDefMap[signalID]; exists {
+					// Map signal types to strategy types
+					var strategyType string
+					switch def.Type {
+					case "rsi":
+						strategyType = "RSI"
+					case "sma_crossover":
+						strategyType = "SignalAdapter"
+					case "macd":
+						strategyType = "MACD"
+					default:
+						log.Printf("Warning: Unknown signal type '%s', skipping signal %s", def.Type, signalID)
+						continue
+					}
+					
+					log.Printf("Converting signal '%s' of type '%s' to strategy '%s'", def.Name, def.Type, strategyType)
+					
+					// For SignalAdapter, pass the signal type and parameters
+					if strategyType == "SignalAdapter" {
+						strategyConfigs = append(strategyConfigs, types.Config{
+							Type:         strategyType,
+							Symbol:       runConfig.Symbol,
+							Params:       types.Params{Values: []string{def.Type}}, // Pass signal type
+							SignalParams: def.Parameters, // Pass signal parameters
+						})
+					} else {
+						strategyConfigs = append(strategyConfigs, types.Config{
+							Type:   strategyType,
+							Symbol: runConfig.Symbol,
+							Params: types.Params{}, // Use default parameters for legacy strategies
+						})
+					}
+				} else {
+					log.Printf("Warning: Signal definition not found for ID: %s", signalID)
+				}
 			}
 		}
 	}
@@ -212,8 +274,16 @@ func (w *Worker) buildTraderConfig(runConfig storage.RunConfig) *config.Config {
 
 // These converter functions should match the ones in the API package
 func (w *Worker) convertBrokerConfig(cfg storage.BrokerConfig) broker.Config {
+	// Ensure broker type has correct capitalization
+	brokerType := cfg.Type
+	if brokerType == "futures" {
+		brokerType = "Futures"
+	}
+	
+	log.Printf("Converting broker config: input type '%s' -> output type '%s'", cfg.Type, brokerType)
+	
 	return broker.Config{
-		Type:               cfg.Type,
+		Type:               brokerType,
 		StartingBalance:    cfg.StartingBalance,
 		WeeklyWithdrawl:    cfg.WeeklyWithdrawl,
 		TrailingStopAmount: cfg.TrailingStopAmount,
@@ -235,7 +305,21 @@ func (w *Worker) convertBrokerConfig(cfg storage.BrokerConfig) broker.Config {
 	}
 }
 
-func (w *Worker) convertDatafeedConfigs(cfgs []storage.DatafeedConfig, startTime, endTime time.Time) []datafeed.Config {
+func (w *Worker) convertDatafeedConfigs(cfgs []storage.DatafeedConfig, startTime, endTime time.Time, symbol string) []datafeed.Config {
+	// If no datafeeds specified, create default Database datafeed
+	if len(cfgs) == 0 {
+		return []datafeed.Config{
+			{
+				Type:      "Database",
+				Symbol:    symbol,
+				Interval:  "tick",
+				StartTime: startTime.Unix(),
+				EndTime:   endTime.Unix(),
+				Storage:   w.storage,
+			},
+		}
+	}
+	
 	configs := make([]datafeed.Config, len(cfgs))
 	for i, cfg := range cfgs {
 		configs[i] = datafeed.Config{
