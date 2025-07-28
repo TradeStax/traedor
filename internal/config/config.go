@@ -19,10 +19,27 @@ type Config struct {
 	Broker     broker.Config
 	Datafeeds  []datafeed.Config
 	Strategy   []types.Config
+	Database   DatabaseConfig
+	API        APIConfig
+}
+
+type DatabaseConfig struct {
+	ConnectionString string
+	MaxConnections   int
+	MaxIdleTime      string
+}
+
+type APIConfig struct {
+	Host string
+	Port int
 }
 
 func setDefaults(v *viper.Viper) {
 	v.SetDefault("Broker.StartingBalance", 100.0)
+	v.SetDefault("Database.MaxConnections", 10)
+	v.SetDefault("Database.MaxIdleTime", "30m")
+	v.SetDefault("API.Host", "localhost")
+	v.SetDefault("API.Port", 8080)
 }
 
 func readConfig(v *viper.Viper) {

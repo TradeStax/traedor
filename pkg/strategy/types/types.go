@@ -1,19 +1,20 @@
 package types
 
-import "github.com/tradestax/traedor/pkg/datafeed"
+import "github.com/tradestax/traedor/pkg/types"
 
 type IStrategy interface {
-	AddData(datafeed.Data) error
+	AddData(types.Data) error
 	GetIndicatorFeed() chan Indicator
 }
 
 type StratBuilder func(*Config, chan Indicator) IStrategy
 
 type Config struct {
-	Type       string
-	IgnoreNone bool
-	Symbol     string
-	Params     Params
+	Type         string
+	IgnoreNone   bool
+	Symbol       string
+	Params       Params
+	SignalParams map[string]interface{}
 }
 
 type Params struct {

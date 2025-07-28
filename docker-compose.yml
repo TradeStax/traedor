@@ -1,0 +1,90 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: traedor-postgres
+    environment:
+      POSTGRES_DB: traedor
+      POSTGRES_USER: traedor
+      POSTGRES_PASSWORD: traedor
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    expose:
+      - "5432"
+    networks:
+      - traedor-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U traedor -d traedor"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Go Backend API
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: traedor-backend
+    environment:
+      - DATABASE_URL=postgres://traedor:traedor@postgres:5432/traedor?sslmode=disable
+    volumes:
+      - ./data:/app/data
+      - ./config.docker.yaml:/app/config.yaml:ro
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - traedor-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "-O", "/dev/null", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # React Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: traedor-frontend
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8080/api
+    ports:
+      - "3030:3000"
+    depends_on:
+      - backend
+    networks:
+      - traedor-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "node --eval \"require('http').get('http://127.0.0.1:3000', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) }).on('error', () => { process.exit(1) })\""]
+      interval: 30s
+      timeout: 3s  
+      retries: 3
+
+  # Redis for caching (optional, for future enhancements)
+  redis:
+    image: redis:7-alpine
+    container_name: traedor-redis
+    expose:
+      - "6379"
+    networks:
+      - traedor-network
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  traedor-network:
+    driver: bridge
