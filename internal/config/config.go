@@ -21,6 +21,7 @@ type Config struct {
 	Strategy   []types.Config
 	Database   DatabaseConfig
 	API        APIConfig
+	Workers    WorkersConfig
 }
 
 type DatabaseConfig struct {
@@ -34,12 +35,17 @@ type APIConfig struct {
 	Port int
 }
 
+type WorkersConfig struct {
+	Count int
+}
+
 func setDefaults(v *viper.Viper) {
 	v.SetDefault("Broker.StartingBalance", 100.0)
-	v.SetDefault("Database.MaxConnections", 10)
+	v.SetDefault("Database.MaxConnections", 100)
 	v.SetDefault("Database.MaxIdleTime", "30m")
 	v.SetDefault("API.Host", "localhost")
 	v.SetDefault("API.Port", 8080)
+	v.SetDefault("Workers.Count", 2)
 }
 
 func readConfig(v *viper.Viper) {

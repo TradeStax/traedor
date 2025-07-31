@@ -73,6 +73,16 @@ func (s *Server) setupRoutes() {
 	api.HandleFunc("/data/import/{id}", s.handleImportDataFile).Methods("POST", "OPTIONS")
 	api.HandleFunc("/data/ohlc", s.handleGetOHLCData).Methods("GET", "OPTIONS")
 	
+	// Signal optimization
+	api.HandleFunc("/optimizations", s.handleCreateOptimization).Methods("POST", "OPTIONS")
+	api.HandleFunc("/optimizations", s.handleListOptimizations).Methods("GET", "OPTIONS")
+	api.HandleFunc("/optimizations/{id}", s.handleGetOptimization).Methods("GET", "OPTIONS")
+	api.HandleFunc("/optimizations/{id}/cancel", s.handleCancelOptimization).Methods("POST", "OPTIONS")
+	api.HandleFunc("/optimizations/{id}/pause", s.handlePauseOptimization).Methods("POST", "OPTIONS")
+	api.HandleFunc("/optimizations/{id}/resume", s.handleResumeOptimization).Methods("POST", "OPTIONS")
+	api.HandleFunc("/optimizations/{id}/cleanup-duplicates", s.handleCleanupOptimizationDuplicates).Methods("POST", "OPTIONS")
+	api.HandleFunc("/optimizations/{id}/results", s.handleGetOptimizationResults).Methods("GET", "OPTIONS")
+
 	// Health check
 	api.HandleFunc("/health", s.handleHealth).Methods("GET", "OPTIONS")
 }
@@ -89,6 +99,9 @@ func (s *Server) Shutdown() {
 
 // Run handlers
 func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
+	startTime := time.Now()
+	log.Printf("========== API: handleCreateRun started ==========")
+	
 	var config storage.RunConfig
 	if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
 		log.Printf("Failed to decode request body: %v", err)
@@ -96,7 +109,8 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	log.Printf("Received create run request: %+v", config)
+	log.Printf("API: Received create run request: %+v", config)
+	log.Printf("API: Time to decode request: %v", time.Since(startTime))
 	
 	// Validate the configuration
 	if config.Symbol == "" {
@@ -105,7 +119,9 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	// Validate that the symbol exists in the database
+	symbolCheckStart := time.Now()
 	symbolExists, err := s.storage.SymbolExists(config.Symbol)
+	log.Printf("Time to check symbol existence: %v", time.Since(symbolCheckStart))
 	if err != nil {
 		log.Printf("Error checking symbol existence: %v", err)
 		writeErrorResponse(w, http.StatusInternalServerError, "Failed to validate symbol")
@@ -221,6 +237,7 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 		config.Signals = signalIDs
 	} else if len(config.SignalDefinitions) > 0 {
 		// Legacy: Create signal definitions if provided (for backward compatibility)
+		log.Printf("Processing %d legacy signal definitions", len(config.SignalDefinitions))
 		for _, signalDef := range config.SignalDefinitions {
 			// Generate unique ID for signal definition
 			signalDef.ID = fmt.Sprintf("%s_%d", signalDef.Name, time.Now().UnixNano())
@@ -238,31 +255,41 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 		
 		// Use the created signal IDs
 		config.Signals = signalIDs
+	} else if len(config.Signals) > 0 {
+		log.Printf("Using %d existing signal IDs (no validation needed): %v", len(config.Signals), config.Signals)
 	}
 	
 	// Create the run (initially in pending status)
+	createRunStart := time.Now()
 	run, err := s.storage.CreateRun(config)
+	log.Printf("Time to create run in database: %v", time.Since(createRunStart))
 	if err != nil {
 		writeErrorResponse(w, http.StatusInternalServerError, "Failed to create run")
 		return
 	}
 	
 	// Immediately queue the run for processing
+	updateStatusStart := time.Now()
 	if err := s.storage.UpdateRunStatus(run.ID, storage.RunStatusQueued, nil); err != nil {
+		log.Printf("Time to update run status: %v", time.Since(updateStatusStart))
 		writeErrorResponse(w, http.StatusInternalServerError, "Failed to queue run")
 		return
 	}
+	log.Printf("Time to update run status: %v", time.Since(updateStatusStart))
 	
 	// Update the run status for response
 	run.Status = storage.RunStatusQueued
 	run.StatusMessage = "Run queued for processing"
 	
+	log.Printf("========== API: Total time to handle create run request: %v ==========", time.Since(startTime))
 	writeJSONResponse(w, http.StatusCreated, run)
 }
 
 func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
 	// Parse query parameters for filtering
-	filter := storage.RunFilter{}
+	filter := storage.RunFilter{
+		Limit: 20, // Default to 20 runs per page
+	}
 	
 	if status := r.URL.Query().Get("status"); status != "" {
 		filter.Status = storage.RunStatus(status)
@@ -273,13 +300,13 @@ func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
-		if limit, err := strconv.Atoi(limitStr); err == nil {
+		if limit, err := strconv.Atoi(limitStr); err == nil && limit > 0 {
 			filter.Limit = limit
 		}
 	}
 	
 	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
-		if offset, err := strconv.Atoi(offsetStr); err == nil {
+		if offset, err := strconv.Atoi(offsetStr); err == nil && offset >= 0 {
 			filter.Offset = offset
 		}
 	}
@@ -290,7 +317,24 @@ func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	writeJSONResponse(w, http.StatusOK, runs)
+	// Get total count for pagination metadata
+	totalCount, err := s.storage.GetRunsCount(filter)
+	if err != nil {
+		log.Printf("Warning: Failed to get total runs count: %v", err)
+		totalCount = len(runs) // Fallback to current page count
+	}
+	
+	// Create response with pagination metadata
+	response := map[string]interface{}{
+		"runs": runs,
+		"pagination": map[string]interface{}{
+			"total":  totalCount,
+			"limit":  filter.Limit,
+			"offset": filter.Offset,
+		},
+	}
+	
+	writeJSONResponse(w, http.StatusOK, response)
 }
 
 func (s *Server) handleGetRun(w http.ResponseWriter, r *http.Request) {

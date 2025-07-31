@@ -144,3 +144,76 @@ export interface SignalOption {
   parameters: Record<string, any>;
   aggregation_intervals?: number[];
 }
+
+// Signal Optimization Types
+export interface OptimizationConfig {
+  name: string;
+  description: string;
+  base_run_config: RunConfig;
+  parameter_ranges: OptimizationParameterRange[];
+  random_order: boolean;
+  optimization_metric: string; // "cumulative_return", "sharpe_ratio", etc.
+}
+
+export interface OptimizationParameterRange {
+  parameter_path: string;  // e.g., "signals_with_params.0.parameters.period"
+  lower_bound: any;
+  upper_bound: any;
+  step: any;
+  parameter_type: string;  // "int", "float", "string"
+}
+
+export interface Optimization {
+  id: string;
+  config: OptimizationConfig;
+  status: OptimizationStatus;
+  status_message: string;
+  progress: number;  // 0.0 to 100.0
+  total_permutations: number;
+  completed_runs: number;
+  failed_runs: number;
+  started_at: string;
+  completed_at?: string;
+  results?: OptimizationResults;
+  created_at: string;
+  updated_at: string;
+  worker_id?: string;
+  parameter_sequence?: Record<string, any>[];
+}
+
+export type OptimizationStatus = 'pending' | 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'paused';
+
+export interface OptimizationResults {
+  best_result?: OptimizationRunResult;
+  worst_result?: OptimizationRunResult;
+  average_return: number;
+  median_return: number;
+  best_parameters: Record<string, any>;
+  completion_time: number;
+  total_backtests: number;
+  successful_backtests: number;
+  failed_backtests: number;
+}
+
+export interface OptimizationRun {
+  id: string;
+  optimization_id: string;
+  parameter_index: number;
+  parameters: Record<string, any>;
+  run_config: RunConfig;
+  backtest_run_id: string;
+  status: RunStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OptimizationRunResult {
+  optimization_run_id: string;
+  parameter_index: number;
+  parameters: Record<string, any>;
+  backtest_run_id: string;
+  performance_metrics?: PerformanceMetrics;
+  optimization_score: number;
+  rank: number;
+  completed_at: string;
+}

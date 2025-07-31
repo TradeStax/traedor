@@ -19,7 +19,15 @@ var (
 )
 
 func NewStrategy(c []types.Config, ic chan types.Indicator) types.IStrategy {
-	if len(c) == 1 {
+	if len(c) == 0 {
+		// No strategy configured - likely using signals only
+		// Use SignalAdapter strategy which handles signal-based trading
+		log.Printf("No strategy configured, using SignalAdapter for signal-based trading")
+		signalConfig := &types.Config{
+			Type: "SignalAdapter",
+		}
+		return NewSignalAdapterStrategyFactory(signalConfig, ic)
+	} else if len(c) == 1 {
 		if f, ok := baseStrategies[c[0].Type]; ok {
 			log.Printf("Creating %v strategy", c[0].Type)
 			return f(&c[0], ic)

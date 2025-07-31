@@ -12,6 +12,7 @@ type IStorage interface {
 	CreateRun(config RunConfig) (*Run, error)
 	GetRun(runID string) (*Run, error)
 	ListRuns(filter RunFilter) ([]*Run, error)
+	GetRunsCount(filter RunFilter) (int, error)
 	UpdateRunStatus(runID string, status RunStatus, metrics *PerformanceMetrics) error
 	
 	// Job queue management
@@ -21,6 +22,7 @@ type IStorage interface {
 	ReleaseRunClaim(runID string) error
 	RetryFailedRun(runID string) error
 	CancelRun(runID string) error
+	ResetStuckRuns() error
 
 	// Trade management
 	SaveTrade(runID string, trade *types.Trade) error
@@ -72,6 +74,28 @@ type IStorage interface {
 	GetStuckImports() ([]*MarketDataFile, error)
 	CountOHLCDataByFileID(fileID string) (int64, error)
 	DeleteOHLCDataByFileID(fileID string) error
+
+	// Signal optimization
+	CreateOptimization(config OptimizationConfig) (*Optimization, error)
+	GetOptimization(optimizationID string) (*Optimization, error)
+	ListOptimizations(filter OptimizationFilter) ([]*Optimization, error)
+	UpdateOptimizationStatus(optimizationID string, status OptimizationStatus, progress float64, message string) error
+	UpdateOptimizationResults(optimizationID string, results *OptimizationResults) error
+	CancelOptimization(optimizationID string) error
+	PauseOptimization(optimizationID string) error
+	ResumeOptimization(optimizationID string) error
+	ClaimNextQueuedOptimization(workerID string) (*Optimization, error)
+	ReleaseOptimizationClaim(optimizationID string) error
+	ResetStuckOptimizations() error
+	UpdateOptimizationSequence(optimizationID string, totalPermutations int, parameterSequence []map[string]interface{}) error
+	
+	// Optimization run tracking
+	CreateOptimizationRun(optimizationID string, runConfig RunConfig, parameterIndex int) (*OptimizationRun, error)
+	GetOptimizationRuns(optimizationID string) ([]*OptimizationRun, error)
+	UpdateOptimizationRunStatus(optimizationRunID string, status RunStatus, backTestRunID string, metrics *PerformanceMetrics) error
+	GetOptimizationRunResults(optimizationID string) ([]*OptimizationRunResult, error)
+	CleanupDuplicateOptimizationRunResults(optimizationID string) (int, error)
+	GetRunsByConfig(config RunConfig) ([]*Run, error)
 
 	// Cleanup
 	Close() error
@@ -308,4 +332,95 @@ type DataAvailability struct {
 	LatestData     time.Time `json:"latest_data"`
 	TotalRecords   int64     `json:"total_records"`
 	AvgIntervalSec int       `json:"avg_interval_seconds"`
+}
+
+// Signal Optimization Types
+type OptimizationConfig struct {
+	Name              string                        `json:"name"`
+	Description       string                        `json:"description"`
+	BaseRunConfig     RunConfig                     `json:"base_run_config"`
+	ParameterRanges   []OptimizationParameterRange  `json:"parameter_ranges"`
+	RandomOrder       bool                          `json:"random_order"`
+	OptimizationMetric string                       `json:"optimization_metric"` // "cumulative_return", "sharpe_ratio", etc.
+}
+
+type OptimizationParameterRange struct {
+	ParameterPath  string      `json:"parameter_path"`  // e.g., "signals_with_params.0.parameters.period"
+	LowerBound     interface{} `json:"lower_bound"`
+	UpperBound     interface{} `json:"upper_bound"`
+	Step           interface{} `json:"step"`
+	ParameterType  string      `json:"parameter_type"`  // "int", "float", "string"
+}
+
+type Optimization struct {
+	ID                 string                  `json:"id"`
+	Config             OptimizationConfig      `json:"config"`
+	Status             OptimizationStatus      `json:"status"`
+	StatusMessage      string                  `json:"status_message"`
+	Progress           float64                 `json:"progress"`  // 0.0 to 100.0
+	TotalPermutations  int                     `json:"total_permutations"`
+	CompletedRuns      int                     `json:"completed_runs"`
+	FailedRuns         int                     `json:"failed_runs"`
+	StartedAt          time.Time               `json:"started_at"`
+	CompletedAt        *time.Time              `json:"completed_at"`
+	Results            *OptimizationResults    `json:"results"`
+	CreatedAt          time.Time               `json:"created_at"`
+	UpdatedAt          time.Time               `json:"updated_at"`
+	WorkerID           string                  `json:"worker_id"`
+	ParameterSequence  []map[string]interface{} `json:"parameter_sequence"` // Pre-calculated parameter combinations
+}
+
+type OptimizationStatus string
+
+const (
+	OptimizationStatusPending    OptimizationStatus = "pending"
+	OptimizationStatusQueued     OptimizationStatus = "queued"
+	OptimizationStatusRunning    OptimizationStatus = "running"
+	OptimizationStatusCompleted  OptimizationStatus = "completed"
+	OptimizationStatusFailed     OptimizationStatus = "failed"
+	OptimizationStatusCancelled  OptimizationStatus = "cancelled"
+	OptimizationStatusPaused     OptimizationStatus = "paused"
+)
+
+type OptimizationResults struct {
+	BestResult         *OptimizationRunResult   `json:"best_result"`
+	WorstResult        *OptimizationRunResult   `json:"worst_result"`
+	AverageReturn      float64                  `json:"average_return"`
+	MedianReturn       float64                  `json:"median_return"`
+	BestParameters     map[string]interface{}   `json:"best_parameters"`
+	CompletionTime     time.Duration            `json:"completion_time"`
+	TotalBacktests     int                      `json:"total_backtests"`
+	SuccessfulBacktests int                     `json:"successful_backtests"`
+	FailedBacktests    int                      `json:"failed_backtests"`
+}
+
+type OptimizationRun struct {
+	ID               string                 `json:"id"`
+	OptimizationID   string                 `json:"optimization_id"`
+	ParameterIndex   int                    `json:"parameter_index"`
+	Parameters       map[string]interface{} `json:"parameters"`
+	RunConfig        RunConfig              `json:"run_config"`
+	BacktestRunID    string                 `json:"backtest_run_id"`
+	Status           RunStatus              `json:"status"`
+	CreatedAt        time.Time              `json:"created_at"`
+	UpdatedAt        time.Time              `json:"updated_at"`
+}
+
+type OptimizationRunResult struct {
+	OptimizationRunID  string                 `json:"optimization_run_id"`
+	ParameterIndex     int                    `json:"parameter_index"`
+	Parameters         map[string]interface{} `json:"parameters"`
+	BacktestRunID      string                 `json:"backtest_run_id"`
+	PerformanceMetrics *PerformanceMetrics    `json:"performance_metrics"`
+	OptimizationScore  float64                `json:"optimization_score"` // Based on optimization_metric
+	Rank               int                    `json:"rank"`
+	CompletedAt        time.Time              `json:"completed_at"`
+}
+
+type OptimizationFilter struct {
+	Status    OptimizationStatus
+	StartDate *time.Time
+	EndDate   *time.Time
+	Limit     int
+	Offset    int
 }

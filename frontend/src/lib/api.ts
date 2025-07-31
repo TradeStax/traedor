@@ -12,7 +12,14 @@ export const api = axios.create({
 
 export const runsApi = {
   list: async (params?: { symbol?: string; status?: string; search?: string; limit?: number; offset?: number }) => {
-    const response = await api.get<Run[]>('/runs', { params });
+    const response = await api.get<{
+      runs: Run[];
+      pagination: {
+        total: number;
+        limit: number;
+        offset: number;
+      };
+    }>('/runs', { params });
     return response.data;
   },
 
@@ -175,6 +182,43 @@ export const dataApi = {
     if (end) params.append('end', end);
     
     const response = await api.get(`/data/ohlc?${params.toString()}`);
+    return response.data;
+  },
+};
+
+export const optimizationApi = {
+  create: async (config: any) => {
+    const response = await api.post('/optimizations', config);
+    return response.data;
+  },
+
+  list: async (params?: { status?: string; limit?: number; offset?: number }) => {
+    const response = await api.get('/optimizations', { params });
+    return response.data;
+  },
+
+  get: async (id: string) => {
+    const response = await api.get(`/optimizations/${id}`);
+    return response.data;
+  },
+
+  cancel: async (id: string) => {
+    const response = await api.post(`/optimizations/${id}/cancel`);
+    return response.data;
+  },
+
+  pause: async (id: string) => {
+    const response = await api.post(`/optimizations/${id}/pause`);
+    return response.data;
+  },
+
+  resume: async (id: string) => {
+    const response = await api.post(`/optimizations/${id}/resume`);
+    return response.data;
+  },
+
+  getResults: async (id: string) => {
+    const response = await api.get(`/optimizations/${id}/results`);
     return response.data;
   },
 };

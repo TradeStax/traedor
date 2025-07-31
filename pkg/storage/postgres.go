@@ -16,17 +16,18 @@ type PostgresStorage struct {
 	signalDefCache map[string]string // Cache for signal definition name -> ID mapping
 }
 
-func NewPostgresStorage(connectionString string) (*PostgresStorage, error) {
+func NewPostgresStorage(connectionString string, maxConnections int) (*PostgresStorage, error) {
 	db, err := sql.Open("postgres", connectionString)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Configure connection pool to prevent exhaustion
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(5)
-	db.SetConnMaxLifetime(5 * time.Minute)
-	db.SetConnMaxIdleTime(1 * time.Minute)
+	// Configure connection pool to handle multiple concurrent backtests
+	// Each backtest worker can use multiple connections for data streaming
+	db.SetMaxOpenConns(maxConnections)
+	db.SetMaxIdleConns(maxConnections / 5)   // 20% of max connections as idle
+	db.SetConnMaxLifetime(10 * time.Minute)
+	db.SetConnMaxIdleTime(2 * time.Minute)
 
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
@@ -51,8 +52,77 @@ func NewPostgresStorage(connectionString string) (*PostgresStorage, error) {
 	return storage, nil
 }
 
-func (p *PostgresStorage) CreateRun(config RunConfig) (*Run, error) {
+func (p *PostgresStorage) FindExistingRun(config RunConfig) (*Run, error) {
 	configJSON, err := json.Marshal(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	var run Run
+	query := `
+		SELECT id, config, status, started_at, completed_at, performance_metrics, created_at, updated_at
+		FROM runs 
+		WHERE status IN ('pending', 'queued', 'running') 
+		AND config->'symbol' = $1::jsonb
+		AND config->'start_time' = $2::jsonb
+		AND config->'end_time' = $3::jsonb
+		AND config->'signals' = $4::jsonb
+		AND config->'signals_with_params' = $5::jsonb
+		AND config->'broker' = $6::jsonb
+		ORDER BY created_at ASC
+		LIMIT 1
+	`
+
+	symbolJSON, _ := json.Marshal(config.Symbol)
+	startTimeJSON, _ := json.Marshal(config.StartTime)
+	endTimeJSON, _ := json.Marshal(config.EndTime)
+	signalsJSON, _ := json.Marshal(config.Signals)
+	signalsWithParamsJSON, _ := json.Marshal(config.SignalsWithParams)
+	brokerJSON, _ := json.Marshal(config.Broker)
+
+	err = p.db.QueryRow(query, symbolJSON, startTimeJSON, endTimeJSON, signalsJSON, signalsWithParamsJSON, brokerJSON).Scan(
+		&run.ID,
+		&configJSON,
+		&run.Status,
+		&run.StartedAt,
+		&run.CompletedAt,
+		&run.PerformanceMetrics,
+		&run.CreatedAt,
+		&run.UpdatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil // No existing run found
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to find existing run: %w", err)
+	}
+
+	if err := json.Unmarshal(configJSON, &run.Config); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+	}
+
+	return &run, nil
+}
+
+func (p *PostgresStorage) CreateRun(config RunConfig) (*Run, error) {
+	startTime := time.Now()
+	log.Printf("CreateRun: Starting, checking for existing run...")
+	
+	// Check if a run with identical configuration already exists
+	existingRun, err := p.FindExistingRun(config)
+	if err != nil {
+		log.Printf("CreateRun: Error checking for existing run: %v", err)
+		// Continue with creation if check fails
+	} else if existingRun != nil {
+		log.Printf("CreateRun: Found existing run %s with identical config, reusing", existingRun.ID)
+		return existingRun, nil
+	}
+
+	log.Printf("CreateRun: No existing run found, creating new run...")
+	marshalStart := time.Now()
+	configJSON, err := json.Marshal(config)
+	log.Printf("CreateRun: JSON marshal took %v", time.Since(marshalStart))
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal config: %w", err)
 	}
@@ -64,6 +134,8 @@ func (p *PostgresStorage) CreateRun(config RunConfig) (*Run, error) {
 		RETURNING id, config, status, started_at, completed_at, performance_metrics, created_at, updated_at
 	`
 
+	log.Printf("CreateRun: Executing database INSERT...")
+	dbStart := time.Now()
 	err = p.db.QueryRow(query, configJSON, RunStatusPending, time.Now()).Scan(
 		&run.ID,
 		&configJSON,
@@ -74,15 +146,104 @@ func (p *PostgresStorage) CreateRun(config RunConfig) (*Run, error) {
 		&run.CreatedAt,
 		&run.UpdatedAt,
 	)
+	log.Printf("CreateRun: Database INSERT took %v", time.Since(dbStart))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create run: %w", err)
 	}
 
+	log.Printf("CreateRun: Unmarshaling response config...")
+	unmarshalStart := time.Now()
 	if err := json.Unmarshal(configJSON, &run.Config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
+	log.Printf("CreateRun: JSON unmarshal took %v", time.Since(unmarshalStart))
 
+	log.Printf("CreateRun: Total time %v", time.Since(startTime))
 	return &run, nil
+}
+
+func (p *PostgresStorage) GetRunsByConfig(config RunConfig) ([]*Run, error) {
+	configJSON, err := json.Marshal(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	query := `
+		SELECT id, config, status, status_message, progress, started_at, completed_at, performance_metrics, created_at, updated_at, worker_id, retry_count, last_error
+		FROM runs 
+		WHERE config = $1::jsonb
+		ORDER BY created_at DESC
+	`
+
+	rows, err := p.db.Query(query, configJSON)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query runs by config: %w", err)
+	}
+	defer rows.Close()
+
+	var runs []*Run
+	for rows.Next() {
+		var run Run
+		var runConfigJSON []byte
+		var completedAt sql.NullTime
+		var perfMetricsJSON []byte
+		var statusMessage, workerID, lastError sql.NullString
+
+		err := rows.Scan(
+			&run.ID,
+			&runConfigJSON,
+			&run.Status,
+			&statusMessage,
+			&run.Progress,
+			&run.StartedAt,
+			&completedAt,
+			&perfMetricsJSON,
+			&run.CreatedAt,
+			&run.UpdatedAt,
+			&workerID,
+			&run.RetryCount,
+			&lastError,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan run: %w", err)
+		}
+
+		if err := json.Unmarshal(runConfigJSON, &run.Config); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+		}
+
+		if completedAt.Valid {
+			run.CompletedAt = &completedAt.Time
+		}
+
+		if perfMetricsJSON != nil {
+			var metrics PerformanceMetrics
+			if err := json.Unmarshal(perfMetricsJSON, &metrics); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal performance metrics: %w", err)
+			}
+			run.PerformanceMetrics = &metrics
+		}
+
+		if statusMessage.Valid {
+			run.StatusMessage = statusMessage.String
+		}
+
+		if workerID.Valid {
+			run.WorkerID = workerID.String
+		}
+
+		if lastError.Valid {
+			run.LastError = lastError.String
+		}
+
+		runs = append(runs, &run)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	return runs, nil
 }
 
 func (p *PostgresStorage) GetRun(runID string) (*Run, error) {
@@ -221,12 +382,59 @@ func (p *PostgresStorage) ListRuns(filter RunFilter) ([]*Run, error) {
 	return runs, nil
 }
 
+func (p *PostgresStorage) GetRunsCount(filter RunFilter) (int, error) {
+	query := `
+		SELECT COUNT(*)
+		FROM runs
+		WHERE 1=1
+	`
+	args := []interface{}{}
+	argCount := 0
+
+	if filter.Symbol != "" {
+		argCount++
+		query += fmt.Sprintf(" AND config->>'symbol' = $%d", argCount)
+		args = append(args, filter.Symbol)
+	}
+
+	if filter.Status != "" {
+		argCount++
+		query += fmt.Sprintf(" AND status = $%d", argCount)
+		args = append(args, filter.Status)
+	}
+
+	if filter.StartDate != nil {
+		argCount++
+		query += fmt.Sprintf(" AND created_at >= $%d", argCount)
+		args = append(args, *filter.StartDate)
+	}
+
+	if filter.EndDate != nil {
+		argCount++
+		query += fmt.Sprintf(" AND created_at <= $%d", argCount)
+		args = append(args, *filter.EndDate)
+	}
+
+	var count int
+	err := p.db.QueryRow(query, args...).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count runs: %w", err)
+	}
+
+	return count, nil
+}
+
 func (p *PostgresStorage) UpdateRunStatus(runID string, status RunStatus, metrics *PerformanceMetrics) error {
+	startTime := time.Now()
+	log.Printf("UpdateRunStatus: Starting for run %s to status %s", runID, status)
+	
 	var metricsJSON sql.NullString
 	var err error
 
 	if metrics != nil {
+		marshalStart := time.Now()
 		jsonBytes, err := json.Marshal(metrics)
+		log.Printf("UpdateRunStatus: Metrics marshal took %v", time.Since(marshalStart))
 		if err != nil {
 			return fmt.Errorf("failed to marshal metrics: %w", err)
 		}
@@ -246,11 +454,15 @@ func (p *PostgresStorage) UpdateRunStatus(runID string, status RunStatus, metric
 		completedAt.Time = time.Now()
 	}
 
+	log.Printf("UpdateRunStatus: Executing database UPDATE...")
+	dbStart := time.Now()
 	_, err = p.db.Exec(query, status, metricsJSON, completedAt, runID)
+	log.Printf("UpdateRunStatus: Database UPDATE took %v", time.Since(dbStart))
 	if err != nil {
 		return fmt.Errorf("failed to update run status: %w", err)
 	}
 
+	log.Printf("UpdateRunStatus: Total time %v", time.Since(startTime))
 	return nil
 }
 
@@ -831,6 +1043,30 @@ func (p *PostgresStorage) CancelRun(runID string) error {
 	return nil
 }
 
+func (p *PostgresStorage) ResetStuckRuns() error {
+	result, err := p.db.Exec(`
+		UPDATE runs 
+		SET status = $1, status_message = 'Reset by worker restart', updated_at = NOW(), 
+		    worker_id = NULL, progress = 0.0
+		WHERE status = $2
+	`, RunStatusQueued, RunStatusRunning)
+	
+	if err != nil {
+		return fmt.Errorf("failed to reset stuck runs: %w", err)
+	}
+	
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	
+	if rowsAffected > 0 {
+		log.Printf("Reset %d stuck runs from 'running' to 'queued' status", rowsAffected)
+	}
+	
+	return nil
+}
+
 func (p *PostgresStorage) GetAvailableSymbols() ([]string, error) {
 	query := `SELECT DISTINCT symbol FROM ohlc_data ORDER BY symbol`
 	
@@ -857,20 +1093,21 @@ func (p *PostgresStorage) GetAvailableSymbols() ([]string, error) {
 }
 
 func (p *PostgresStorage) SymbolExists(symbol string) (bool, error) {
-	// Check both imported_symbols and ohlc_data tables
-	query := `
-		SELECT EXISTS(
-			SELECT 1 FROM imported_symbols WHERE symbol = $1
-			UNION
-			SELECT 1 FROM ohlc_data WHERE symbol = $1 LIMIT 1
-		)`
+	startTime := time.Now()
+	log.Printf("SymbolExists: Checking symbol %s", symbol)
 	
+	// Check only imported_symbols table - this is the source of truth for available symbols
+	query := `SELECT EXISTS(SELECT 1 FROM imported_symbols WHERE symbol = $1)`
+	
+	dbStart := time.Now()
 	var exists bool
 	err := p.db.QueryRow(query, symbol).Scan(&exists)
+	log.Printf("SymbolExists: Database query took %v", time.Since(dbStart))
 	if err != nil {
 		return false, fmt.Errorf("failed to check symbol existence: %w", err)
 	}
 	
+	log.Printf("SymbolExists: Total time %v, result: %t", time.Since(startTime), exists)
 	return exists, nil
 }
 

@@ -57,6 +57,9 @@ export default function Layout({ children }: LayoutProps) {
                 <Link href="/data" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100 dark:hover:border-gray-600 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
                   Data
                 </Link>
+                <Link href="/optimizations" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100 dark:hover:border-gray-600 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                  Optimizations
+                </Link>
                 <Link href="/runs/new" className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100 dark:hover:border-gray-600 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
                   New Backtest
                 </Link>
@@ -127,6 +130,13 @@ export default function Layout({ children }: LayoutProps) {
                 onClick={() => setMobileMenuOpen(false)}
               >
                 Data
+              </Link>
+              <Link
+                href="/optimizations"
+                className="block px-4 py-2 text-base font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-gray-100 dark:hover:bg-gray-700"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Optimizations
               </Link>
               <Link
                 href="/runs/new"

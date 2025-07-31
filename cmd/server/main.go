@@ -22,7 +22,7 @@ func main() {
 	cfg := config.New()
 	
 	// Initialize storage
-	store, err := storage.NewPostgresStorage(cfg.Database.ConnectionString)
+	store, err := storage.NewPostgresStorage(cfg.Database.ConnectionString, cfg.Database.MaxConnections)
 	if err != nil {
 		log.Fatalf("Failed to initialize storage: %v", err)
 	}

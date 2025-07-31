@@ -3,7 +3,7 @@
 # Database configuration
 Database:
   ConnectionString: "postgres://traedor:traedor@postgres:5432/traedor?sslmode=disable"
-  MaxConnections: 20
+  MaxConnections: 100
   MaxIdleTime: "30m"
 
 # API configuration

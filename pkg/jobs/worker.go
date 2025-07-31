@@ -18,13 +18,14 @@ import (
 )
 
 type WorkerPool struct {
-	config      *config.Config
-	storage     storage.IStorage
-	workers     []*Worker
-	workerCount int
-	ctx         context.Context
-	cancel      context.CancelFunc
-	wg          sync.WaitGroup
+	config              *config.Config
+	storage             storage.IStorage
+	workers             []*Worker
+	optimizationWorkers []*OptimizationWorker
+	workerCount         int
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	wg                  sync.WaitGroup
 }
 
 type Worker struct {
@@ -38,15 +39,16 @@ func NewWorkerPool(cfg *config.Config, store storage.IStorage, workerCount int) 
 	ctx, cancel := context.WithCancel(context.Background())
 	
 	pool := &WorkerPool{
-		config:      cfg,
-		storage:     store,
-		workerCount: workerCount,
-		ctx:         ctx,
-		cancel:      cancel,
-		workers:     make([]*Worker, workerCount),
+		config:              cfg,
+		storage:             store,
+		workerCount:         workerCount,
+		ctx:                 ctx,
+		cancel:              cancel,
+		workers:             make([]*Worker, workerCount),
+		optimizationWorkers: make([]*OptimizationWorker, 1), // Start with 1 optimization worker
 	}
 	
-	// Create workers
+	// Create backtest workers
 	for i := 0; i < workerCount; i++ {
 		pool.workers[i] = &Worker{
 			id:      fmt.Sprintf("worker-%d", i),
@@ -56,12 +58,26 @@ func NewWorkerPool(cfg *config.Config, store storage.IStorage, workerCount int) 
 		}
 	}
 	
+	// Create optimization workers
+	pool.optimizationWorkers[0] = NewOptimizationWorker("opt-worker-0", cfg, store)
+	
 	return pool
 }
 
 func (wp *WorkerPool) Start() {
-	log.Printf("Starting worker pool with %d workers", wp.workerCount)
+	log.Printf("Starting worker pool with %d backtest workers and %d optimization workers", wp.workerCount, len(wp.optimizationWorkers))
 	
+	// Reset any runs that were stuck in 'running' state from previous shutdown
+	if err := wp.storage.ResetStuckRuns(); err != nil {
+		log.Printf("Warning: Failed to reset stuck runs on startup: %v", err)
+	}
+	
+	// Reset any optimizations that were stuck in 'running' state from previous shutdown
+	if err := wp.storage.ResetStuckOptimizations(); err != nil {
+		log.Printf("Warning: Failed to reset stuck optimizations on startup: %v", err)
+	}
+	
+	// Start backtest workers
 	for _, worker := range wp.workers {
 		wp.wg.Add(1)
 		go func(w *Worker) {
@@ -69,10 +85,22 @@ func (wp *WorkerPool) Start() {
 			w.run()
 		}(worker)
 	}
+	
+	// Start optimization workers
+	for _, optWorker := range wp.optimizationWorkers {
+		optWorker.Start()
+	}
 }
 
 func (wp *WorkerPool) Stop() {
 	log.Println("Stopping worker pool...")
+	
+	// Stop optimization workers first
+	for _, optWorker := range wp.optimizationWorkers {
+		optWorker.Stop()
+	}
+	
+	// Stop backtest workers
 	wp.cancel()
 	wp.wg.Wait()
 	log.Println("Worker pool stopped")
@@ -208,55 +236,103 @@ func (w *Worker) buildTraderConfig(runConfig storage.RunConfig) *config.Config {
 	strategyConfigs := w.convertStrategyConfigs(runConfig.Strategies)
 	
 	// Convert signals to strategies if no explicit strategies are provided
-	if len(strategyConfigs) == 0 && len(runConfig.Signals) > 0 {
-		// Get signal definitions to extract the proper signal types
-		signalDefinitions, err := w.storage.GetSignalDefinitions()
-		if err != nil {
-			log.Printf("Failed to load signal definitions: %v", err)
-			// Fallback to empty strategies to avoid crash
-			strategyConfigs = []types.Config{}
-		} else {
-			signalDefMap := make(map[string]storage.SignalDefinition)
-			for _, def := range signalDefinitions {
-				signalDefMap[def.ID] = def
-			}
+	log.Printf("buildTraderConfig debug: strategyConfigs=%d, Signals=%d, SignalsWithParams=%d", 
+		len(strategyConfigs), len(runConfig.Signals), len(runConfig.SignalsWithParams))
+	if len(strategyConfigs) == 0 && (len(runConfig.Signals) > 0 || len(runConfig.SignalsWithParams) > 0) {
+		// Handle SignalsWithParams (new format for optimization)
+		if len(runConfig.SignalsWithParams) > 0 {
+			log.Printf("Converting %d SignalsWithParams to strategies", len(runConfig.SignalsWithParams))
 			
-			strategyConfigs = make([]types.Config, 0, len(runConfig.Signals))
-			for _, signalID := range runConfig.Signals {
-				if def, exists := signalDefMap[signalID]; exists {
-					// Map signal types to strategy types
-					var strategyType string
-					switch def.Type {
-					case "rsi":
-						strategyType = "RSI"
-					case "sma_crossover":
-						strategyType = "SignalAdapter"
-					case "macd":
-						strategyType = "MACD"
-					default:
-						log.Printf("Warning: Unknown signal type '%s', skipping signal %s", def.Type, signalID)
-						continue
-					}
-					
-					log.Printf("Converting signal '%s' of type '%s' to strategy '%s'", def.Name, def.Type, strategyType)
-					
-					// For SignalAdapter, pass the signal type and parameters
-					if strategyType == "SignalAdapter" {
+			// Get signal definitions to extract the proper signal types
+			signalDefinitions, err := w.storage.GetSignalDefinitions()
+			if err != nil {
+				log.Printf("Failed to load signal definitions: %v", err)
+				// Fallback to empty strategies to avoid crash
+				strategyConfigs = []types.Config{}
+			} else {
+				signalDefMap := make(map[string]storage.SignalDefinition)
+				for _, def := range signalDefinitions {
+					signalDefMap[def.ID] = def
+				}
+				
+				strategyConfigs = make([]types.Config, 0, len(runConfig.SignalsWithParams))
+				
+				for _, signalWithParams := range runConfig.SignalsWithParams {
+					if def, exists := signalDefMap[signalWithParams.SignalDefinitionID]; exists {
+						log.Printf("Converting signal definition '%s' (type: %s) with parameters: %+v", def.Name, def.Type, signalWithParams.Parameters)
+						
+						// Use SignalAdapter for all signals in the new format
 						strategyConfigs = append(strategyConfigs, types.Config{
-							Type:         strategyType,
+							Type:         "SignalAdapter",
 							Symbol:       runConfig.Symbol,
-							Params:       types.Params{Values: []string{def.Type}}, // Pass signal type
-							SignalParams: def.Parameters, // Pass signal parameters
+							Params:       types.Params{Values: []string{def.Type}}, // Pass signal type from definition
+							SignalParams: signalWithParams.Parameters, // Pass signal parameters
 						})
 					} else {
+						// Handle direct signal type IDs (like "rsi", "sma_crossover") from available signals
+						log.Printf("Signal definition not found for ID: %s, treating as direct signal type", signalWithParams.SignalDefinitionID)
+						
+						// Use the ID directly as the signal type
 						strategyConfigs = append(strategyConfigs, types.Config{
-							Type:   strategyType,
-							Symbol: runConfig.Symbol,
-							Params: types.Params{}, // Use default parameters for legacy strategies
+							Type:         "SignalAdapter",
+							Symbol:       runConfig.Symbol,
+							Params:       types.Params{Values: []string{signalWithParams.SignalDefinitionID}}, // Use ID as signal type
+							SignalParams: signalWithParams.Parameters, // Pass signal parameters
 						})
 					}
-				} else {
-					log.Printf("Warning: Signal definition not found for ID: %s", signalID)
+				}
+			}
+		} else if len(runConfig.Signals) > 0 {
+			// Handle legacy Signals format
+			// Get signal definitions to extract the proper signal types
+			signalDefinitions, err := w.storage.GetSignalDefinitions()
+			if err != nil {
+				log.Printf("Failed to load signal definitions: %v", err)
+				// Fallback to empty strategies to avoid crash
+				strategyConfigs = []types.Config{}
+			} else {
+				signalDefMap := make(map[string]storage.SignalDefinition)
+				for _, def := range signalDefinitions {
+					signalDefMap[def.ID] = def
+				}
+				
+				strategyConfigs = make([]types.Config, 0, len(runConfig.Signals))
+				for _, signalID := range runConfig.Signals {
+					if def, exists := signalDefMap[signalID]; exists {
+						// Map signal types to strategy types
+						var strategyType string
+						switch def.Type {
+						case "rsi":
+							strategyType = "RSI"
+						case "sma_crossover":
+							strategyType = "SignalAdapter"
+						case "macd":
+							strategyType = "MACD"
+						default:
+							log.Printf("Warning: Unknown signal type '%s', skipping signal %s", def.Type, signalID)
+							continue
+						}
+						
+						log.Printf("Converting signal '%s' of type '%s' to strategy '%s'", def.Name, def.Type, strategyType)
+						
+						// For SignalAdapter, pass the signal type and parameters
+						if strategyType == "SignalAdapter" {
+							strategyConfigs = append(strategyConfigs, types.Config{
+								Type:         strategyType,
+								Symbol:       runConfig.Symbol,
+								Params:       types.Params{Values: []string{def.Type}}, // Pass signal type
+								SignalParams: def.Parameters, // Pass signal parameters
+							})
+						} else {
+							strategyConfigs = append(strategyConfigs, types.Config{
+								Type:   strategyType,
+								Symbol: runConfig.Symbol,
+								Params: types.Params{}, // Use default parameters for legacy strategies
+							})
+						}
+					} else {
+						log.Printf("Warning: Signal definition not found for ID: %s", signalID)
+					}
 				}
 			}
 		}

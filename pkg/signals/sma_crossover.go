@@ -43,6 +43,17 @@ func (s *SMACrossoverSignal) Initialize(params map[string]interface{}) error {
 		return err
 	}
 
+	// Validate parameters
+	if s.shortPeriod <= 0 {
+		return fmt.Errorf("short_period must be positive, got %d", s.shortPeriod)
+	}
+	if s.longPeriod <= 0 {
+		return fmt.Errorf("long_period must be positive, got %d", s.longPeriod)
+	}
+	if s.shortPeriod >= s.longPeriod {
+		return fmt.Errorf("short_period (%d) must be less than long_period (%d)", s.shortPeriod, s.longPeriod)
+	}
+
 	s.shortMA = make([]float64, 0, s.shortPeriod)
 	s.longMA = make([]float64, 0, s.longPeriod)
 	s.priceHistory = make([]float64, 0, s.longPeriod)
@@ -79,7 +90,12 @@ func (s *SMACrossoverSignal) ProcessTick(tick datafeed.Data) (Signal, error) {
 		return signal, nil
 	}
 
-	// Calculate short MA
+	// Calculate short MA - ensure we have enough history
+	if len(s.priceHistory) < s.shortPeriod {
+		// Not enough data for short MA calculation yet
+		return signal, nil
+	}
+	
 	shortMA := s.calculateMA(s.priceHistory[len(s.priceHistory)-s.shortPeriod:])
 	
 	// Calculate long MA
